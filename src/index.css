@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --font-kanit: "Kanit", sans-serif;
+  --font-sarabun: "TH Sarabun PSK", "TH Sarabun New", "Sarabun", sans-serif;
+  
+  --color-brand-primary: #166534; /* Green 800 */
+  --color-brand-secondary: #f97316; /* Orange 500 */
+}
+
+@font-face {
+  font-family: 'TH Sarabun PSK';
+  src: local('TH Sarabun PSK'), local('THSarabunPSK'), url('/fonts/THSarabunNew.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'TH Sarabun PSK';
+  src: local('TH Sarabun PSK Bold'), local('THSarabunPSK-Bold'), url('/fonts/THSarabunNew-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'TH Sarabun New';
+  src: url('/fonts/THSarabunNew.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'TH Sarabun New';
+  src: url('/fonts/THSarabunNew-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@layer base {
+  body {
+    @apply font-kanit bg-slate-50 text-slate-900;
+  }
+}
