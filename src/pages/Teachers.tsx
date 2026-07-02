@@ -91,7 +91,11 @@ export default function Teachers() {
       // 1. ดึงข้อมูลโปรไฟล์ที่ลงทะเบียนและผ่านการอนุมัติแล้วของโรงเรียนนี้ (ยกเว้น guest)
       const activeProfile = getActiveSchoolProfile();
       let dbProfiles: any[] = [];
-      if (activeProfile?.id) {
+      
+      // ตรวจสอบโครงสร้าง UUID เพื่อป้องกัน Bad Request 400 ในตาราง profiles
+      const isUUID = activeProfile?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeProfile.id) : false;
+      
+      if (activeProfile?.id && isUUID) {
         const { data: profilesData } = await supabase
           .from('profiles')
           .select('*')
