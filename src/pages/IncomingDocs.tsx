@@ -588,7 +588,7 @@ export default function IncomingDocs() {
             </div>
           )}
         </div>
-        {isDirector && (
+        {(isDirector || !!extraPerms.access_administrative) && (
           <button onClick={openNewDocModal} className="bg-brand-primary text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg active:scale-95 transition-all">
             <FilePlus size={20} /> ลงรับหนังสือใหม่
           </button>
