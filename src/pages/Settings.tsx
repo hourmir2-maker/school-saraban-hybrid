@@ -94,6 +94,18 @@ export default function Settings() {
     }
   }
 
+  const handleFormatLineOa = () => {
+    let rawOa = settings.line_oa_link ? settings.line_oa_link.trim() : '';
+    if (rawOa && !rawOa.startsWith('http://') && !rawOa.startsWith('https://')) {
+      const cleanId = rawOa.startsWith('@') ? rawOa.substring(1) : rawOa;
+      const formattedUrl = `https://line.me/R/ti/p/@${cleanId}`;
+      setSettings({
+        ...settings,
+        line_oa_link: formattedUrl
+      });
+    }
+  };
+
   const handleMigrateOldFiles = async () => {
     if (!confirm('ยืนยันที่จะโอนย้ายไฟล์เอกสารที่เคยเกษียณผ่าน LINE ในอดีตเข้า Google Drive หรือไม่? (ระบบจะค้นหาและย้ายไฟล์ให้เฉพาะเอกสารที่เก็บอยู่ใน Supabase ชั่วคราว)')) return;
     setIsMigrating(true);
@@ -187,11 +199,19 @@ export default function Settings() {
         sigUrl = await uploadToSupabase(selectedSignature, 'system', sigPath);
       }
 
+      // จัดรูปแบบ LINE OA Link อัตโนมัติ (หากผู้ใช้ใส่เฉพาะ ID)
+      let formattedLineOa = settings.line_oa_link ? settings.line_oa_link.trim() : '';
+      if (formattedLineOa && !formattedLineOa.startsWith('http://') && !formattedLineOa.startsWith('https://')) {
+        const cleanId = formattedLineOa.startsWith('@') ? formattedLineOa.substring(1) : formattedLineOa;
+        formattedLineOa = `https://line.me/R/ti/p/@${cleanId}`;
+      }
+
       // แยก gas_url ออกจาก payload ของตาราง settings
       const { gas_url, ...settingsPayload } = settings;
 
       const payload = { 
         ...settingsPayload, 
+        line_oa_link: formattedLineOa,
         school_logo_url: logoUrl, 
         director_signature_url: sigUrl 
       };
@@ -385,7 +405,8 @@ export default function Settings() {
                     className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-[#06C755]/10 focus:border-[#06C755] transition-all"
                     value={settings.line_oa_link || ''}
                     onChange={e => setSettings({...settings, line_oa_link: e.target.value})}
-                    placeholder="ใส่ลิงก์สำหรับให้ครูกดเพิ่มเพื่อน..."
+                    onBlur={handleFormatLineOa}
+                    placeholder="ใส่ลิงก์ LINE OA หรือ LINE ID ของบอท เช่น @mybot..."
                   />
                 </div>
               </div>
