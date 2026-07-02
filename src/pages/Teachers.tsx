@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, getActiveSchoolProfile } from '../lib/supabase';
 import { uploadFile } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
@@ -87,13 +87,100 @@ export default function Teachers() {
   async function fetchTeachers() {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      // 1. ดึงข้อมูลโปรไฟล์ที่ลงทะเบียนและผ่านการอนุมัติแล้วของโรงเรียนนี้ (ยกเว้น guest)
+      const activeProfile = getActiveSchoolProfile();
+      let dbProfiles: any[] = [];
+      if (activeProfile?.id) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('school_id', activeProfile.id)
+          .eq('status', 'active')
+          .in('role', ['admin', 'director', 'teacher']);
+        dbProfiles = profilesData || [];
+      }
+
+      // 2. ดึงข้อมูลครูเดิมในตาราง teachers
+      const { data: teachersData, error: teachersError } = await supabase
         .from('teachers')
         .select('*')
         .order('first_name', { ascending: true });
 
-      if (error) throw error;
-      setTeachers(data || []);
+      if (teachersError) throw teachersError;
+      
+      let currentTeachers = teachersData || [];
+
+      // 3. ทำการเปรียบเทียบและดึงข้อมูลโปรไฟล์ที่ยังไม่มีประวัติครู (Auto-Sync)
+      if (dbProfiles.length > 0) {
+        const existingEmails = new Set(currentTeachers.map(t => t.email?.toLowerCase().trim()));
+        const toInsert: any[] = [];
+
+        dbProfiles.forEach(p => {
+          const emailLower = p.email?.toLowerCase().trim();
+          if (emailLower && !existingEmails.has(emailLower)) {
+            // แยกชื่อและนามสกุลจาก display_name
+            const nameParts = p.display_name ? p.display_name.trim().split(/\s+/) : [];
+            const firstName = nameParts[0] || p.email.split('@')[0];
+            const lastName = nameParts.slice(1).join(' ') || '-';
+            
+            // กำหนดบทบาท / ตำแหน่งเบื้องต้น
+            let position = 'ครู';
+            if (p.role === 'admin') position = 'ผู้ดูแลระบบ';
+            if (p.role === 'director') position = 'ผู้อำนวยการ';
+
+            // ค้นหาคำนำหน้าชื่อเริ่มต้น
+            let prefix = 'นาย';
+            if (firstName.startsWith('นางสาว') || firstName.startsWith('น.ส.')) prefix = 'นางสาว';
+            else if (firstName.startsWith('นาง')) prefix = 'นาง';
+
+            // ล้างคำนำหน้าออกหากติดอยู่ในชื่อจริง
+            let cleanFirstName = firstName;
+            if (prefix === 'นางสาว' && cleanFirstName.startsWith('นางสาว')) cleanFirstName = cleanFirstName.replace('นางสาว', '');
+            else if (prefix === 'นางสาว' && cleanFirstName.startsWith('น.ส.')) cleanFirstName = cleanFirstName.replace('น.ส.', '');
+            else if (prefix === 'นาง' && cleanFirstName.startsWith('นาง')) cleanFirstName = cleanFirstName.replace('นาง', '');
+            else if (cleanFirstName.startsWith('นาย')) {
+              prefix = 'นาย';
+              cleanFirstName = cleanFirstName.replace('นาย', '');
+            }
+
+            toInsert.push({
+              school_id: activeProfile?.id,
+              prefix: prefix,
+              first_name: cleanFirstName.trim(),
+              last_name: lastName.trim(),
+              position: position,
+              department: 'ทั่วไป',
+              phone: '',
+              email: emailLower,
+              photo_url: '',
+              status: 'active',
+              line_user_id: p.line_user_id || null
+            });
+          }
+        });
+
+        // บันทึกโปรไฟล์ใหม่เข้าระบบตารางครูอัตโนมัติ
+        if (toInsert.length > 0) {
+          console.log(`Auto-syncing ${toInsert.length} user profiles into teachers table...`);
+          const { error: insertError } = await supabase
+            .from('teachers')
+            .insert(toInsert);
+          
+          if (!insertError) {
+            // คิวรีข้อมูลครูใหม่อีกครั้งหลังบันทึก
+            const { data: updatedTeachers } = await supabase
+              .from('teachers')
+              .select('*')
+              .order('first_name', { ascending: true });
+            currentTeachers = updatedTeachers || [];
+          } else {
+            console.error('Error insert auto-sync teachers:', insertError);
+          }
+        }
+      }
+
+      setTeachers(currentTeachers);
     } catch (err) {
       console.error('Error fetching teachers:', err);
     } finally {
