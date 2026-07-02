@@ -213,12 +213,13 @@ export default function TaskManagement() {
     
     const isAdmin = profile?.role === 'admin';
     const isDirector = profile?.role === 'director' || isAdmin;
+    const hasManageAccess = isDirector || !!profile?.extra_permissions?.access_administrative;
     const userEmail = user?.email?.toLowerCase();
     const teacherEmail = t.teachers?.email?.toLowerCase();
     const isAssignedToMe = userEmail && teacherEmail && userEmail === teacherEmail;
 
-    // Filter by Role: Teachers only see their own tasks
-    if (!isDirector && !isAssignedToMe) return false;
+    // Filter by Role: Teachers only see their own tasks unless they have access_administrative permission
+    if (!hasManageAccess && !isAssignedToMe) return false;
     
     if (activeTab === 'all') return matchesSearch;
     return matchesSearch && t.status === activeTab;
