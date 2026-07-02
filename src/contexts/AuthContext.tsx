@@ -64,7 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { user: currentUser } } = await supabase.auth.getUser();
         if (currentUser) {
           const userEmail = currentUser.email || '';
-          let userRole = 'teacher'; // สิทธิ์ครูเริ่มต้น
+          let userRole: 'admin' | 'director' | 'teacher' | 'guest' = 'teacher'; // สิทธิ์ครูเริ่มต้น
           let targetSchoolId = localStorage.getItem('active_school_id') || null;
 
           // ตรวจสอบความถูกต้องของโครงสร้าง UUID เพื่อป้องกันข้อผิดพลาดประเภทข้อมูลใน PostgreSQL

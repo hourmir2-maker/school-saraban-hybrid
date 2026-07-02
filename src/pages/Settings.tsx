@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, getActiveSchoolProfile, getSchoolProfiles } from '../lib/supabase';
 import { uploadToSupabase, uploadFileToDrive, deleteFromSupabase } from '../lib/storage';
 import { 
   Save, 
@@ -214,7 +214,7 @@ export default function Settings() {
 
         // อัปเดต LocalStorage เพื่อให้ระบบรับรู้ทันทีโดยไม่ต้องเข้าสู่ระบบใหม่
         const profiles = getSchoolProfiles();
-        const updatedProfiles = profiles.map(p => {
+        const updatedProfiles = profiles.map((p: any) => {
           if (p.id === activeProfile.id) {
             return { ...p, gasUrl: gas_url ? gas_url.trim() : '' };
           }
