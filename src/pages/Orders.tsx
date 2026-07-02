@@ -41,14 +41,16 @@ export default function Orders() {
   const [isDrafting, setIsDrafting] = useState(false);
   const [settings, setSettings] = useState<any>(null);
 
+  const defaultSchoolName = import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียน';
+
   const [formData, setFormData] = useState({
     order_number: '',
     subject: '',
-    issuer: 'โรงเรียนบ้านควนโคกยา',
+    issuer: defaultSchoolName,
     order_date: new Date().toISOString().split('T')[0],
     content: '',
     sign_name: '',
-    sign_position: 'ผู้อำนวยการโรงเรียนบ้านควนโคกยา',
+    sign_position: `ผู้อำนวยการ${defaultSchoolName}`,
     committees: [{ teacher_id: '', role: 'ประธานกรรมการ', duty: '' }] as any[],
     legal_refs: [] as string[],
     show_director_opinion: false
@@ -67,14 +69,14 @@ export default function Orders() {
   }
 
   async function fetchSettings() {
-    const { data } = await supabase.from('settings').select('*').single();
+    const { data } = await supabase.from('settings').select('*').maybeSingle();
     if (data) {
       setSettings(data);
       setFormData(prev => ({
         ...prev,
-        issuer: data.school_name || 'โรงเรียนบ้านควนโคกยา',
+        issuer: data.school_name || defaultSchoolName,
         sign_name: data.director_name || '',
-        sign_position: `ผู้อำนวยการ${data.school_name || 'โรงเรียนบ้านควนโคกยา'}`
+        sign_position: `ผู้อำนวยการ${data.school_name || defaultSchoolName}`
       }));
     }
   }
@@ -500,7 +502,7 @@ export default function Orders() {
                 ` : ''}
                 (ลงชื่อ).......................................................<br/>
                 ( ${data.sign_name || settings?.director_name || '................................................'} )<br/>
-                ตำแหน่ง ${data.sign_position || `ผู้อำนวยการ${settings?.school_name || 'โรงเรียนบ้านควนโคกยา'}`}
+                ตำแหน่ง ${data.sign_position || `ผู้อำนวยการ${settings?.school_name || defaultSchoolName}`}
               </div>
             </div>
           </div>
@@ -668,7 +670,7 @@ export default function Orders() {
 
             if (prof?.line_user_id) {
               const memberName = prof.display_name;
-              const personalMsg = `\n📢 แจ้งเตือนคำสั่งแต่งตั้งใหม่\nเรียน คุณครู ${memberName}\n\nท่านได้รับการแต่งตั้งในคำสั่งโรงเรียนบ้านควนโคกยา ที่ ${finalOrderNumber}\nเรื่อง: ${selectedOrderForApproval.subject}\nบทบาทหน้าที่ของท่าน: ${member.role} ${member.duty ? `(${member.duty})` : ''}\n\nกรุณาเข้าตรวจสอบหน้าที่และเปิดดูไฟล์คำสั่งฉบับเต็มได้ในระบบสารบรรณค่ะ`;
+              const personalMsg = `\n📢 แจ้งเตือนคำสั่งแต่งตั้งใหม่\nเรียน คุณครู ${memberName}\n\nท่านได้รับการแต่งตั้งในคำสั่ง${settings?.school_name || defaultSchoolName} ที่ ${finalOrderNumber}\nเรื่อง: ${selectedOrderForApproval.subject}\nบทบาทหน้าที่ของท่าน: ${member.role} ${member.duty ? `(${member.duty})` : ''}\n\nกรุณาเข้าตรวจสอบหน้าที่และเปิดดูไฟล์คำสั่งฉบับเต็มได้ในระบบสารบรรณค่ะ`;
               
               await sendLineNotification(personalMsg, prof.line_user_id);
             }
@@ -827,11 +829,11 @@ ${groups.map(g => `<duty name="${g}">
     setFormData({ 
       order_number: '', 
       subject: '', 
-      issuer: settings?.school_name || 'โรงเรียนบ้านควนโคกยา', 
+      issuer: settings?.school_name || defaultSchoolName, 
       order_date: new Date().toISOString().split('T')[0], 
       content: '',
       sign_name: settings?.director_name || '',
-      sign_position: `ผู้อำนวยการ${settings?.school_name || 'โรงเรียนบ้านควนโคกยา'}`,
+      sign_position: `ผู้อำนวยการ${settings?.school_name || defaultSchoolName}`,
       committees: [{ teacher_id: '', role: 'ประธานกรรมการ', duty: '' }] as any[],
       legal_refs: [] as string[],
       show_director_opinion: false

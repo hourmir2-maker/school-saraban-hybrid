@@ -40,22 +40,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (userId: string) => {
     try {
-      // ลองดึงจาก Cache ก่อนเพื่อความรวดเร็ว (Optimistic UI)
+      // 1. ดึงจาก Cache ก่อนเพื่อความรวดเร็ว (Optimistic UI)
       const cachedProfile = localStorage.getItem(`profile_${userId}`);
       if (cachedProfile && !profile) {
         setProfile(JSON.parse(cachedProfile));
       }
 
+      // 2. คิวรีข้อมูลโปรไฟล์จากตาราง (ใช้ maybeSingle() เพื่อไม่ให้พ่น Error 406 บนระบบ)
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
       
       if (!error && data) {
         setProfile(data);
-        // เก็บเข้า Cache
         localStorage.setItem(`profile_${userId}`, JSON.stringify(data));
+      } else if (!data) {
+        // --- 🟢 ระบบกู้คืนโปรไฟล์อัตโนมัติอย่างถาวร (Safety Fallback Profile Creator) ---
+        // กรณีดึงแล้วไม่พบโปรไฟล์ในตาราง profiles (แต่ล็อกอินใน Auth สำเร็จ) 
+        console.log('No profile row found, initiating safety auto-creation...');
+        
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (currentUser) {
+          const userEmail = currentUser.email || '';
+          let userRole = 'teacher'; // สิทธิ์ครูเริ่มต้น
+          let targetSchoolId = localStorage.getItem('active_school_id') || null;
+
+          // ตรวจสอบความถูกต้องของโครงสร้าง UUID เพื่อป้องกันข้อผิดพลาดประเภทข้อมูลใน PostgreSQL
+          let isUUID = targetSchoolId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSchoolId) : false;
+          if (!isUUID) {
+            // หากค่าที่ได้ไม่ใช่ UUID (เช่น 'school_default') ให้หาโรงเรียนแรกที่มีในฐานข้อมูลมาผูกให้โดยอัตโนมัติ
+            const { data: firstSchool } = await supabase
+              .from('schools')
+              .select('id')
+              .limit(1)
+              .maybeSingle();
+            
+            if (firstSchool?.id) {
+              targetSchoolId = firstSchool.id;
+              localStorage.setItem('active_school_id', firstSchool.id);
+              isUUID = true;
+            } else {
+              targetSchoolId = null;
+            }
+          }
+
+          // วิเคราะห์หาบทบาทและสิทธิ์แอดมินอัตโนมัติ:
+          const superAdminEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'ncrows77@gmail.com').toLowerCase();
+          if (userEmail.toLowerCase() === superAdminEmail) {
+            userRole = 'admin';
+          } else if (targetSchoolId) {
+            // ตรวจสอบกับอีเมลแอดมินที่ผูกกับโรงเรียน
+            const { data: schoolData } = await supabase
+              .from('schools')
+              .select('id, admin_email')
+              .eq('id', targetSchoolId)
+              .maybeSingle();
+
+            if (schoolData && schoolData.admin_email?.toLowerCase() === userEmail.toLowerCase()) {
+              userRole = 'admin';
+            }
+          }
+
+          const fallbackProfile = {
+            id: currentUser.id,
+            school_id: targetSchoolId,
+            display_name: currentUser.user_metadata?.display_name || userEmail.split('@')[0],
+            email: userEmail,
+            role: userRole,
+            status: 'active'
+          };
+
+          // บันทึกโปรไฟล์เริ่มต้นลงตารางในฐานข้อมูล
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert([fallbackProfile]);
+
+          if (!insertError) {
+            setProfile(fallbackProfile);
+            localStorage.setItem(`profile_${userId}`, JSON.stringify(fallbackProfile));
+            console.log('Safety profile auto-created successfully:', fallbackProfile);
+          } else {
+            console.error('Failed to create safety profile:', insertError);
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching profile:', err);

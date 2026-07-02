@@ -2,115 +2,80 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
   Loader2, 
-  Users, 
   FileText, 
-  CalendarCheck, 
-  Clock, 
-  TrendingUp, 
+  FileDown, 
+  FileUp, 
+  BookOpen, 
   CheckCircle2, 
-  AlertCircle
+  AlertCircle,
+  TrendingUp,
+  Inbox
 } from 'lucide-react';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
-    totalStudents: 0,
-    incomingToday: 0,
-    presentToday: 0,
-    onDuty: 0,
+    incomingTotal: 0,
+    outgoingTotal: 0,
+    ordersTotal: 0,
+    memosTotal: 0,
     pendingTasks: 0,
-    completedTasksToday: 0
+    completedTasks: 0
   });
   const [recentDocs, setRecentDocs] = useState<any[]>([]);
-  const [dutyTeachers, setDutyTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchDashboardData() {
       setLoading(true);
-      const today = new Date().toISOString().split('T')[0];
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const currentDay = days[new Date().getDay()];
-
       try {
-        // 0. Fetch Settings
-        const { data: settings } = await supabase
-          .from('settings')
-          .select('current_academic_year')
-          .single();
-        
-        const currentYear = settings?.current_academic_year || '2569';
-
-        // 1. ดึงสถิติรวมผ่าน RPC (ประสิทธิภาพสูง)
-        let dashboardStats: any = null;
-        try {
-          const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_stats', {
-            target_year: currentYear,
-            today_date: today
-          });
-          if (!rpcError) dashboardStats = rpcData;
-        } catch (e) {}
-
-        // 2. Fetch ดั้งเดิมสำหรับข้อมูลอื่นๆ และ Fallback
-        const { count: studentCount } = !dashboardStats ? await supabase
-          .from('students')
-          .select('*', { count: 'exact', head: true })
-          .eq('academic_year', currentYear)
-          .or('graduation_status.ilike.%กำลังศึกษา%,graduation_status.eq.ปกติ') : { count: dashboardStats.total_students };
-
-        const { count: incomingCount } = !dashboardStats ? await supabase
+        // 1. ดึงจำนวนหนังสือรับสะสมทั้งหมด
+        const { count: incomingCount } = await supabase
           .from('incoming_docs')
+          .select('*', { count: 'exact', head: true });
+
+        // 2. ดึงจำนวนหนังสือส่งสะสมทั้งหมด
+        const { count: outgoingCount } = await supabase
+          .from('outgoing_docs')
+          .select('*', { count: 'exact', head: true });
+
+        // 3. ดึงจำนวนคำสั่งสะสมทั้งหมด
+        const { count: ordersCount } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true });
+
+        // 4. ดึงจำนวนบันทึกข้อความสะสมทั้งหมด
+        const { count: memosCount } = await supabase
+          .from('memos')
+          .select('*', { count: 'exact', head: true });
+
+        // 5. ดึงสถิติติดตามงาน/สั่งการ (ที่ค้าง)
+        const { count: pendingTaskCount } = await supabase
+          .from('doc_assignments')
           .select('*', { count: 'exact', head: true })
-          .eq('doc_date', today) : { count: dashboardStats.incoming_today };
+          .in('status', ['pending', 'acknowledged']);
 
-        let totalPresent = 0;
-        if (dashboardStats) {
-          totalPresent = dashboardStats.present_today;
-        } else {
-          const { data: attendanceData } = await supabase
-            .from('attendance')
-            .select('summary')
-            .eq('date', today);
-          totalPresent = attendanceData?.reduce((sum, record: any) => sum + (record.summary?.present || 0), 0) || 0;
-        }
+        // 6. ดึงสถิติติดตามงานที่เสร็จแล้ว
+        const { count: completedCount } = await supabase
+          .from('doc_assignments')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'completed');
 
-        // 4. Duty Teachers (ดึงแยกเพราะต้องการ Object รายคน)
-        const { data: duties } = await supabase
-          .from('teacher_duties')
-          .select('teachers(*)')
-          .eq('duty_day', currentDay);
-
-        const currentDutyTeachers = (duties?.map((d: any) => d.teachers) || []).filter(Boolean);
-
-        // 5. Latest Documents
+        // 7. ดึงเอกสารรับเข้าล่าสุด 5 ฉบับ
         const { data: latestDocs } = await supabase
           .from('incoming_docs')
           .select('*')
           .order('created_at', { ascending: false })
           .limit(5);
 
-        // 6. Pending Tasks
-        const { count: pendingTaskCount } = await supabase
-          .from('doc_assignments')
-          .select('*', { count: 'exact', head: true })
-          .in('status', ['pending', 'acknowledged']);
-
-        // 7. Completed Tasks Today
-        const { count: completedTodayCount } = await supabase
-          .from('doc_assignments')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'completed')
-          .gte('reported_at', `${today}T00:00:00Z`);
-
         setStats({
-          totalStudents: studentCount || 0,
-          incomingToday: incomingCount || 0,
-          presentToday: totalPresent,
-          onDuty: currentDutyTeachers.length,
+          incomingTotal: incomingCount || 0,
+          outgoingTotal: outgoingCount || 0,
+          ordersTotal: ordersCount || 0,
+          memosTotal: memosCount || 0,
           pendingTasks: pendingTaskCount || 0,
-          completedTasksToday: completedTodayCount || 0
+          completedTasks: completedCount || 0
         });
         setRecentDocs(latestDocs || []);
-        setDutyTeachers(currentDutyTeachers);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
       } finally {
@@ -122,20 +87,21 @@ export default function Dashboard() {
   }, []);
 
   if (loading) return (
-    <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[40px] border border-slate-100 shadow-sm">
+    <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[40px] border border-slate-100 shadow-sm animate-in fade-in">
       <Loader2 className="animate-spin text-brand-primary mb-4" size={40} />
       <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">กำลังดึงข้อมูลสถิติล่าสุด...</p>
     </div>
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 p-8 max-w-6xl mx-auto overflow-y-auto h-full pb-24 scrollbar-hide animate-in fade-in duration-500">
+      
       {/* Summary Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="นักเรียนทั้งหมด" value={stats.totalStudents} color="bg-blue-500" icon={<Users size={28} />} />
-        <StatCard label="หนังสือรับวันนี้" value={stats.incomingToday} color="bg-orange-500" icon={<FileText size={28} />} />
-        <StatCard label="มาเรียนวันนี้" value={stats.presentToday} color="bg-green-500" icon={<CalendarCheck size={28} />} />
-        <StatCard label="ครูเวรวันนี้" value={stats.onDuty} color="bg-purple-500" icon={<Clock size={28} />} />
+        <StatCard label="หนังสือรับสะสม" value={stats.incomingTotal} color="bg-blue-500" icon={<FileDown size={28} />} />
+        <StatCard label="หนังสือส่งสะสม" value={stats.outgoingTotal} color="bg-orange-500" icon={<FileUp size={28} />} />
+        <StatCard label="คำสั่งโรงเรียน" value={stats.ordersTotal} color="bg-purple-500" icon={<BookOpen size={28} />} />
+        <StatCard label="บันทึกข้อความ" value={stats.memosTotal} color="bg-teal-500" icon={<FileText size={28} />} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -143,29 +109,29 @@ export default function Dashboard() {
         <div className="lg:col-span-2 space-y-8">
            {/* Task Overview */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center gap-4">
-                 <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+              <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow">
+                 <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
                     <AlertCircle size={24} />
                  </div>
                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase">งานที่รอดำเนินการ</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">งานที่รอดำเนินการ</p>
                     <p className="text-2xl font-black text-slate-800">{stats.pendingTasks} รายการ</p>
                  </div>
               </div>
-              <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center gap-4">
-                 <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
+              <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow">
+                 <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center shrink-0">
                     <CheckCircle2 size={24} />
                  </div>
                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase">รายงานผลวันนี้</p>
-                    <p className="text-2xl font-black text-slate-800">{stats.completedTasksToday} รายการ</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">งานที่รายงานผลแล้ว</p>
+                    <p className="text-2xl font-black text-slate-800">{stats.completedTasks} รายการ</p>
                  </div>
               </div>
            </div>
 
            {/* Recent Docs */}
            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
-              <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><FileText size={20} className="text-orange-500" /> งานเอกสารล่าสุด</h3>
+              <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><Inbox size={20} className="text-orange-500" /> เอกสารรับเข้าล่าสุด</h3>
               <div className="space-y-4">
                   {recentDocs.length === 0 ? (
                     <div className="py-10 text-center text-slate-400 italic font-bold">ไม่มีรายการเอกสารใหม่วันนี้</div>
@@ -174,52 +140,33 @@ export default function Dashboard() {
                       <div className="flex gap-4 items-center">
                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 shadow-xs group-hover:text-orange-500 transition-colors"><FileText size={18} /></div>
                         <div>
-                          <p className="text-sm font-bold text-slate-700">{doc.subject}</p>
-                          <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">{doc.from_agency}</p>
+                          <p className="text-sm font-bold text-slate-700 truncate max-w-[250px] md:max-w-[400px]">{doc.subject}</p>
+                          <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter mt-0.5">{doc.from_agency}</p>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">{new Date(doc.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">
+                        {new Date(doc.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                      </span>
                     </div>
                   ))}
               </div>
            </div>
         </div>
 
-        {/* Right: Duty Teachers & Info */}
+        {/* Right Panel */}
         <div className="space-y-8">
-           <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
-              <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><Clock size={20} className="text-blue-500" /> ครูเวรประจำวัน</h3>
-              <div className="space-y-4">
-                  {dutyTeachers.length === 0 ? (
-                    <div className="py-10 text-center text-slate-400 italic font-bold">ไม่มีข้อมูลครูเวรวันนี้</div>
-                  ) : dutyTeachers.map(teacher => (
-                    <div key={teacher.id} className="bg-blue-50/50 p-4 rounded-[24px] border border-blue-100/50 flex items-center gap-4">
-                      <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-slate-300 shadow-sm overflow-hidden shrink-0 border border-blue-100">
-                        {teacher.photo_url ? (
-                          <img src={teacher.photo_url} alt={teacher.first_name} className="w-full h-full object-cover" />
-                        ) : (
-                          <Users size={24} />
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">ครูเวรปฏิบัติหน้าที่</p>
-                        <p className="text-sm font-bold text-blue-900 leading-none mt-1">{teacher.prefix}{teacher.first_name} {teacher.last_name}</p>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-           </div>
-
-           <div className="bg-brand-primary p-8 rounded-[40px] text-white shadow-xl shadow-green-100 relative overflow-hidden">
+           <div className="bg-brand-primary p-8 rounded-[40px] text-white shadow-xl shadow-green-100/50 relative overflow-hidden h-fit">
               <div className="relative z-10">
-                <h4 className="font-black text-xl mb-2">ยินดีต้อนรับ</h4>
-                <p className="text-xs text-green-100 font-bold leading-relaxed">ระบบบริหารจัดการข้อมูลโรงเรียนบ้านควนโคกยา V2 พร้อมสำหรับการทำงานในวันนี้ครับ</p>
+                <h4 className="font-black text-xl mb-2">ระบบสารบรรณอิเล็กทรอนิกส์</h4>
+                <p className="text-xs text-green-100 font-bold leading-relaxed">
+                  ระบบสารบรรณอิเล็กทรอนิกส์และบอทน้องชบา AI ยินดีต้อนรับเข้าปฏิบัติงานในวันนี้ค่ะ
+                </p>
                 <div className="mt-6 flex items-center gap-2 bg-white/20 w-fit px-4 py-2 rounded-full backdrop-blur-sm">
                    <TrendingUp size={16} />
-                   <span className="text-[10px] font-black uppercase tracking-widest">System Healthy</span>
+                   <span className="text-[10px] font-black uppercase tracking-widest">System Online</span>
                 </div>
               </div>
-              <Users className="absolute -right-8 -bottom-8 text-white/10" size={160} />
+              <Inbox className="absolute -right-8 -bottom-8 text-white/10" size={160} />
            </div>
         </div>
       </div>

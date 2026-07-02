@@ -38,7 +38,7 @@ export function getSchoolProfiles(): SchoolProfile[] {
 export function checkAndCreateDefaultProfile() {
   try {
     const profilesJson = localStorage.getItem('school_profiles');
-    const profiles = profilesJson ? JSON.parse(profilesJson) : [];
+    let profiles = profilesJson ? JSON.parse(profilesJson) : [];
     
     // ตรวจสอบว่าใน .env มี config ที่ตั้งค่าไว้จริงและไม่ใช่ placeholder
     const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -50,7 +50,7 @@ export function checkAndCreateDefaultProfile() {
                       envKey !== 'your-anon-key' &&
                       envKey !== 'YOUR_SECOND_SCHOOL_SUPABASE_ANON_KEY';
 
-    if (profiles.length === 0 && isRealEnv) {
+    if (isRealEnv) {
       const defaultProfile: SchoolProfile = {
         id: 'school_default',
         name: import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียนหลัก (เชื่อมต่ออัตโนมัติ)',
@@ -60,8 +60,24 @@ export function checkAndCreateDefaultProfile() {
         gasUrl: import.meta.env.VITE_GAS_URL || ''
       };
       
-      localStorage.setItem('school_profiles', JSON.stringify([defaultProfile]));
-      localStorage.setItem('active_school_id', defaultProfile.id);
+      const defaultIndex = profiles.findIndex((p: any) => p.id === 'school_default');
+      
+      if (defaultIndex >= 0) {
+        // หากมีโปรไฟล์เดิมอยู่แล้ว แต่ URL หรือ KEY ไม่ตรงกับ .env ปัจจุบัน ให้ปรับปรุงให้ถูกต้อง
+        if (profiles[defaultIndex].supabaseUrl !== envUrl || profiles[defaultIndex].supabaseAnonKey !== envKey) {
+          profiles[defaultIndex] = defaultProfile;
+          localStorage.setItem('school_profiles', JSON.stringify(profiles));
+          // รีเซ็ต active_school_id ให้ชี้ไปที่โรงเรียนหลักที่แก้ไขใหม่
+          localStorage.setItem('active_school_id', 'school_default');
+          initSupabase();
+        }
+      } else {
+        // หากไม่มีโปรไฟล์เลย ให้สร้างใหม่
+        profiles.push(defaultProfile);
+        localStorage.setItem('school_profiles', JSON.stringify(profiles));
+        localStorage.setItem('active_school_id', defaultProfile.id);
+        initSupabase();
+      }
     }
   } catch (e) {
     console.error('Error checking/creating default profile:', e);

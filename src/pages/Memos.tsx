@@ -36,6 +36,7 @@ export default function Memos() {
   const [directorOpinion, setDirectorOpinion] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<any>(null);
+  const defaultSchoolName = import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียน';
 
   const [formData, setFormData] = useState({
     memo_number: '',
@@ -43,7 +44,7 @@ export default function Memos() {
     requester: '',
     department: '',
     memo_date: new Date().toISOString().split('T')[0],
-    to_person: 'ผู้อำนวยการโรงเรียนบ้านควนโคกยา',
+    to_person: `ผู้อำนวยการ${defaultSchoolName}`,
     content: '',
     closing_phrase: 'จึงเรียนมาเพื่อทราบ',
     sign_name: '',
@@ -61,15 +62,15 @@ export default function Memos() {
   }, []);
 
   async function fetchSettings() {
-    const { data } = await supabase.from('settings').select('*').single();
+    const { data } = await supabase.from('settings').select('*').maybeSingle();
     if (data) {
       setSettings(data);
       setFormData(prev => ({
         ...prev,
-        department: data.school_name || 'โรงเรียนบ้านควนโคกยา',
+        department: data.school_name || defaultSchoolName,
         sign_name: '',
-        sign_position: 'ครูโรงเรียนบ้านควนโคกยา',
-        to_person: `ผู้อำนวยการ${data.school_name || 'โรงเรียนบ้านควนโคกยา'}`
+        sign_position: `ครู${data.school_name || defaultSchoolName}`,
+        to_person: `ผู้อำนวยการ${data.school_name || defaultSchoolName}`
       }));
     }
   }
@@ -472,7 +473,7 @@ export default function Memos() {
                   ` : ''}
                   (ลงชื่อ).......................................................<br/>
                   ( ${settings?.director_name || '................................................'} )<br/>
-                  ผู้อำนวยการ${settings?.school_name || 'โรงเรียนบ้านควนโคกยา'}<br/>
+                  ผู้อำนวยการ${settings?.school_name || defaultSchoolName}<br/>
                   วันที่ ${data.approved_date ? `<span style="font-family: 'THSarabunIT๙', 'TH Sarabun New', sans-serif;">${data.approved_date}</span>` : '......./......./.......'}
                 </div>
               </div>
@@ -606,13 +607,13 @@ export default function Memos() {
       memo_number: '', 
       subject: '', 
       requester: '', 
-      department: settings?.school_name || 'โรงเรียนบ้านควนโคกยา', 
+      department: settings?.school_name || defaultSchoolName, 
       memo_date: new Date().toISOString().split('T')[0],
-      to_person: `ผู้อำนวยการ${settings?.school_name || 'โรงเรียนบ้านควนโคกยา'}`,
+      to_person: `ผู้อำนวยการ${settings?.school_name || defaultSchoolName}`,
       content: '',
       closing_phrase: 'จึงเรียนมาเพื่อทราบ',
       sign_name: '',
-      sign_position: 'ครูโรงเรียนบ้านควนโคกยา',
+      sign_position: `ครู${settings?.school_name || defaultSchoolName}`,
       online_submit: true,
       ai_key_points: '',
       show_director_opinion: false

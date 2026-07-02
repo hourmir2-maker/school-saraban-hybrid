@@ -31,7 +31,8 @@ export default function Settings() {
     line_group_id: '',
     line_oa_link: '',
     gemini_api_key: '',
-    ai_cowork_api_key: ''
+    ai_cowork_api_key: '',
+    gas_url: ''
   });
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -56,10 +57,33 @@ export default function Settings() {
         .single();
 
       if (error && error.code !== 'PGRST116') throw error; // PGRST116 is 'no rows'
+      
+      // ดึงค่า gas_url จากตาราง schools
+      let gasUrl = '';
+      const activeProfile = getActiveSchoolProfile();
+      if (activeProfile?.id) {
+        const { data: schoolData } = await supabase
+          .from('schools')
+          .select('gas_url')
+          .eq('id', activeProfile.id)
+          .maybeSingle();
+        if (schoolData) {
+          gasUrl = schoolData.gas_url || '';
+        }
+      }
+
       if (data) {
-        setSettings(data);
+        setSettings({
+          ...data,
+          gas_url: gasUrl
+        });
         setPreviewUrl(data.school_logo_url);
         setSigPreviewUrl(data.director_signature_url);
+      } else {
+        setSettings(prev => ({
+          ...prev,
+          gas_url: gasUrl
+        }));
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -161,8 +185,11 @@ export default function Settings() {
         sigUrl = await uploadToSupabase(selectedSignature, 'system', sigPath);
       }
 
+      // แยก gas_url ออกจาก payload ของตาราง settings
+      const { gas_url, ...settingsPayload } = settings;
+
       const payload = { 
-        ...settings, 
+        ...settingsPayload, 
         school_logo_url: logoUrl, 
         director_signature_url: sigUrl 
       };
@@ -174,6 +201,31 @@ export default function Settings() {
         : await supabase.from('settings').insert([payload]);
 
       if (error) throw error;
+
+      // อัปเดตตาราง schools
+      const activeProfile = getActiveSchoolProfile();
+      if (activeProfile?.id) {
+        const { error: schoolError } = await supabase
+          .from('schools')
+          .update({ gas_url: gas_url ? gas_url.trim() : null })
+          .eq('id', activeProfile.id);
+          
+        if (schoolError) console.error('Failed to update gas_url in schools:', schoolError);
+
+        // อัปเดต LocalStorage เพื่อให้ระบบรับรู้ทันทีโดยไม่ต้องเข้าสู่ระบบใหม่
+        const profiles = getSchoolProfiles();
+        const updatedProfiles = profiles.map(p => {
+          if (p.id === activeProfile.id) {
+            return { ...p, gasUrl: gas_url ? gas_url.trim() : '' };
+          }
+          return p;
+        });
+        localStorage.setItem('school_profiles', JSON.stringify(updatedProfiles));
+        
+        // โหลด Client Supabase ใหม่
+        import('../lib/supabase').then(m => m.initSupabase());
+      }
+
       alert('บันทึกการตั้งค่าเรียบร้อยแล้ว');
       fetchSettings();
     } catch (err: any) {
@@ -271,6 +323,23 @@ export default function Settings() {
                 onChange={e => setSettings({...settings, local_gov_name: e.target.value})}
                 placeholder="สพป.พัทลุง เขต 2 / ทต..."
               />
+            </div>
+
+            <div className="col-span-full space-y-1.5 pt-4 border-t border-slate-50">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-brand-primary">
+                Google Drive Web App (GAS URL) สำหรับเชื่อมข้อมูลและเก็บไฟล์ประจำโรงเรียน
+              </label>
+              <input 
+                type="url" 
+                className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all text-xs font-sans"
+                value={settings.gas_url || ''}
+                onChange={e => setSettings({...settings, gas_url: e.target.value})}
+                placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+              />
+              <p className="text-[10px] text-slate-400 font-bold ml-1 uppercase leading-relaxed">
+                * ใช้สำหรับการอัปโหลดและจัดเก็บเอกสารราชการเข้า Google Drive ประจำโรงเรียนของคุณครูเอง 
+                (หากเว้นว่างไว้ ระบบจะย้อนกลับไปใช้ Google Drive ส่วนกลางของแอดมินโครงการหลักโดยอัตโนมัติ)
+              </p>
             </div>
 
             <div className="col-span-full space-y-4 pt-4 border-t border-slate-50">

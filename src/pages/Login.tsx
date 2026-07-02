@@ -8,6 +8,7 @@ interface LoginProps {
 
 export default function Login({ onManageSchools }: LoginProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [schoolCode, setSchoolCode] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -41,8 +42,11 @@ export default function Login({ onManageSchools }: LoginProps) {
 
   async function fetchSchoolSettings() {
     try {
-      const { data, error } = await supabase.from('settings').select('school_name, school_logo_url').single();
-      if (error) throw error;
+      const { data } = await supabase
+        .from('settings')
+        .select('school_name, school_logo_url')
+        .maybeSingle();
+
       if (data?.school_name) {
         setSchoolName(data.school_name);
       }
@@ -70,9 +74,7 @@ export default function Login({ onManageSchools }: LoginProps) {
     
     setSchoolLogo('');
     await fetchSchoolSettings();
-  };
-
-  const handleAuth = async (e: React.FormEvent) => {
+  };  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -80,35 +82,51 @@ export default function Login({ onManageSchools }: LoginProps) {
 
     try {
       if (isSignUp) {
-        // 1. Sign Up User
+        // 1. ค้นหาตรวจสอบความถูกต้องของรหัสโรงเรียนก่อน
+        if (!schoolCode.trim()) {
+          throw new Error('กรุณากรอกรหัสโรงเรียน');
+        }
+        
+        const { data: schoolData, error: schoolError } = await supabase
+          .from('schools')
+          .select('id, school_name')
+          .eq('school_code', schoolCode.trim().toUpperCase())
+          .single();
+          
+        if (schoolError || !schoolData) {
+          throw new Error('ไม่พบรหัสโรงเรียนนี้ในระบบ กรุณาตรวจสอบรหัสโรงเรียนอีกครั้ง หรือติดต่อผู้ดูแลระบบส่วนกลาง');
+        }
+
+        // ตั้งค่าโรงเรียนนี้เป็น Active School ในเครื่องทันทีเพื่อให้ระบบดึงข้อมูลได้ถูกต้อง
+        const schoolProfile: SchoolProfile = {
+          id: schoolData.id,
+          name: schoolData.school_name,
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+          supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+          vercelUrl: import.meta.env.VITE_VERCEL_URL || window.location.origin,
+          gasUrl: import.meta.env.VITE_GAS_URL || ''
+        };
+        localStorage.setItem('active_school_id', schoolData.id);
+        localStorage.setItem('school_profiles', JSON.stringify([schoolProfile]));
+        initSupabase();
+
+        // 2. Sign Up User และฝังข้อมูลดิบใน Auth metadata เพื่อส่งให้ Database Trigger หลังบ้านรัน
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
               display_name: displayName,
+              school_code: schoolCode.trim().toUpperCase() // ส่งรหัสโรงเรียนให้ Database Trigger ทำงาน
             }
           }
         });
 
         if (signUpError) throw signUpError;
 
-        // 2. Create Profile in 'profiles' table
-        if (data.user) {
-          const { error: profileError } = await supabase.from('profiles').insert([
-            {
-              id: data.user.id,
-              display_name: displayName,
-              email: email,
-              role: 'guest',
-              status: 'active'
-            }
-          ]);
-          if (profileError) console.error('Profile creation error:', profileError);
-        }
-
-        setMessage('ลงทะเบียนสำเร็จ! กรุณาตรวจสอบอีเมลเพื่อยืนยันตัวตน (หากระบบตั้งค่าไว้) หรือลองเข้าสู่ระบบ');
+        setMessage(`ลงทะเบียนกับ ${schoolData.school_name} สำเร็จ! กรุณาเข้าสู่ระบบด้วยบัญชีนี้`);
         setIsSignUp(false);
+        setSchoolCode('');
       } else {
         // Sign In
         const { error } = await supabase.auth.signInWithPassword({
@@ -125,7 +143,6 @@ export default function Login({ onManageSchools }: LoginProps) {
       setLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-50 to-orange-50 p-4 font-sans">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/20">
@@ -191,17 +208,30 @@ export default function Login({ onManageSchools }: LoginProps) {
             )}
 
             {isSignUp && (
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 tracking-widest">ชื่อ-นามสกุล</label>
-                <input
-                  type="text"
-                  required
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold"
-                  placeholder="กรอกชื่อของคุณ"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 tracking-widest">รหัสโรงเรียน (School Code)</label>
+                  <input
+                    type="text"
+                    required
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold uppercase"
+                    placeholder="ตัวอย่างเช่น SKW001"
+                    value={schoolCode}
+                    onChange={(e) => setSchoolCode(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 tracking-widest">ชื่อ-นามสกุล</label>
+                  <input
+                    type="text"
+                    required
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold"
+                    placeholder="กรอกชื่อของคุณ"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                </div>
+              </>
             )}
 
             <div>

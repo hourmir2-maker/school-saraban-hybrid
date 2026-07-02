@@ -17,7 +17,9 @@ import Dashboard from './pages/Dashboard';
 import AICowork from './pages/AICowork';
 import ARLearning from './pages/ARLearning';
 import ARAdmin from './pages/ARAdmin';
+import SchoolApprovals from './pages/SchoolApprovals';
 import IdentityFooter from './components/IdentityFooter';
+import ComingSoon from './components/ComingSoon';
 
 import { 
   Loader2, 
@@ -50,16 +52,19 @@ import {
   XCircle,
   RefreshCw,
   Gamepad2,
-  MapPin
+  MapPin,
+  School
 } from 'lucide-react';
 
 const { ipcRenderer } = (window as any).require ? (window as any).require('electron') : { ipcRenderer: null };
 
-type Tab = 'dashboard' | 'incoming' | 'outgoing' | 'orders' | 'memos' | 'students' | 'teachers' | 'tasks' | 'attendance' | 'attendance_report' | 'library' | 'wfh' | 'settings' | 'lec' | 'custom_print' | 'users' | 'academic' | 'finance' | 'reports' | 'profile' | 'ai_cowork' | 'free_education' | 'utilities' | 'ar_learning' | 'ar_admin' | 'service_area' | 'athletics';
+type Tab = 'dashboard' | 'incoming' | 'outgoing' | 'orders' | 'memos' | 'students' | 'teachers' | 'tasks' | 'attendance' | 'attendance_report' | 'library' | 'wfh' | 'settings' | 'lec' | 'custom_print' | 'users' | 'academic' | 'finance' | 'reports' | 'profile' | 'ai_cowork' | 'free_education' | 'utilities' | 'ar_learning' | 'ar_admin' | 'service_area' | 'athletics' | 'approvals';
 
 function App() {
   const { user, profile, loading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const superAdminEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'ncrows77@gmail.com').toLowerCase();
+  const isSuperAdmin = profile?.email?.toLowerCase() === superAdminEmail;
   const [schoolName, setSchoolName] = useState(import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียนบ้านควนโคกยา');
   const [schoolLogo, setSchoolLogo] = useState('');
   const [localGovName, setLocalGovName] = useState('');
@@ -233,6 +238,57 @@ function App() {
   const canAccessFinance = !isGuest && (isAdmin || isDirector || extraPerms.access_finance);
   const canAccessAthletics = !isGuest && (isAdmin || isDirector || extraPerms.access_athletics);
 
+  const isSuperAdminMode = localStorage.getItem('super_admin_mode') === 'true';
+
+  if (isSuperAdminMode) {
+    return (
+      <div className="min-h-screen flex bg-slate-50 font-sans">
+        {/* Super Admin Sidebar */}
+        <aside className="w-64 bg-slate-900 text-slate-200 flex flex-col sticky top-0 h-screen overflow-y-auto shrink-0 shadow-xl">
+          <div className="p-6 border-b border-slate-800 flex items-center gap-3 bg-slate-950">
+            <div className="w-10 h-10 bg-brand-primary/20 rounded-xl flex items-center justify-center border border-brand-primary/30 shrink-0">
+              <School className="text-brand-primary" size={24} />
+            </div>
+            <div>
+              <h1 className="font-black text-white text-sm tracking-tight">Super Admin</h1>
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">ระบบควบคุมส่วนกลาง</p>
+            </div>
+          </div>
+          
+          <nav className="flex-1 py-6 px-4 space-y-1">
+            <SidebarItem 
+              icon={<School size={20} />} 
+              label="อนุมัติโรงเรียน" 
+              active={true} 
+              onClick={() => {}} 
+            />
+          </nav>
+
+          <div className="p-4 border-t border-slate-800 bg-slate-950">
+            <button 
+              onClick={async () => {
+                await signOut();
+                localStorage.removeItem('super_admin_mode');
+                localStorage.removeItem('active_school_id');
+                window.location.reload();
+              }}
+              className="flex items-center gap-3 w-full px-4 py-3 text-red-400 hover:bg-red-950/30 rounded-xl transition-all font-bold text-sm"
+            >
+              <LogOut size={20} /> ออกจากระบบกลาง
+            </button>
+          </div>
+        </aside>
+
+        {/* Super Admin Content */}
+        <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
+          <div className="flex-1 overflow-y-auto">
+            <SchoolApprovals />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* Sidebar */}
@@ -282,6 +338,9 @@ function App() {
                   <div className="py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mt-4 text-[9px]">ตั้งค่าและความปลอดภัย</div>
                   <SidebarItem icon={<ShieldCheck size={20} />} label="จัดการสิทธิ์" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
                   <SidebarItem icon={<SettingsIcon size={20} />} label="ตั้งค่าระบบ" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+                  {isSuperAdmin && (
+                    <SidebarItem icon={<School size={20} />} label="อนุมัติโรงเรียน" active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} />
+                  )}
                 </>
               )}
             </>
@@ -369,6 +428,21 @@ function App() {
             {activeTab === 'ai_cowork' && <AICowork />}
             {activeTab === 'ar_learning' && <ARLearning onBack={() => setActiveTab('dashboard')} />}
             {activeTab === 'ar_admin' && <ARAdmin onBack={() => setActiveTab('dashboard')} />}
+            {activeTab === 'approvals' && <SchoolApprovals />}
+            
+            {activeTab === 'students' && <ComingSoon title="ระบบข้อมูลนักเรียน" />}
+            {activeTab === 'attendance' && <ComingSoon title="ระบบบันทึกเวลาเรียน" />}
+            {activeTab === 'attendance_report' && <ComingSoon title="รายงานเวลาเรียน" />}
+            {activeTab === 'library' && <ComingSoon title="ระบบห้องสมุด (วิชาการ)" />}
+            {activeTab === 'wfh' && <ComingSoon title="ระบบลงเวลาปฏิบัติงาน (WFH)" />}
+            {activeTab === 'lec' && <ComingSoon title="รายงานเวลาเรียน (LEC)" />}
+            {activeTab === 'custom_print' && <ComingSoon title="พิมพ์รายชื่อตามกิจกรรม" />}
+            {activeTab === 'academic' && <ComingSoon title="ระบบส่งแผนการสอน (งานวิชาการ)" />}
+            {activeTab === 'finance' && <ComingSoon title="ระบบบริหารงบประมาณและการเงิน" />}
+            {activeTab === 'free_education' && <ComingSoon title="ระบบจ่ายเงินเรียนฟรี 15 ปี" />}
+            {activeTab === 'utilities' && <ComingSoon title="ระบบเบิกจ่ายค่าสาธารณูปโภค" />}
+            {activeTab === 'service_area' && <ComingSoon title="ระบบตรวจสอบเขตพื้นที่บริการ (ทร.14)" />}
+            {activeTab === 'athletics' && <ComingSoon title="ระบบลงทะเบียนนักกีฬา" />}
             
             <IdentityFooter schoolName={schoolName} schoolLogo={schoolLogo} localGovName={localGovName} />
           </div>

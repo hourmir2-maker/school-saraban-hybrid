@@ -2,421 +2,478 @@ import { useState, useEffect } from 'react';
 import { 
   School, 
   Plus, 
-  Trash2, 
-  Edit2, 
-  Check, 
   ArrowLeft, 
-  Info, 
-  ExternalLink,
-  Save,
+  Check, 
+  Loader2, 
+  Send,
+  HelpCircle,
   Database,
-  Globe,
-  Settings
+  Lock,
+  Mail
 } from 'lucide-react';
-import { type SchoolProfile, getSchoolProfiles, getActiveSchoolProfile, initSupabase } from '../lib/supabase';
+import { supabase, type SchoolProfile } from '../lib/supabase';
 
 interface SchoolSetupProps {
   onBackToLogin?: () => void;
 }
 
 export default function SchoolSetup({ onBackToLogin }: SchoolSetupProps) {
-  const [profiles, setProfiles] = useState<SchoolProfile[]>([]);
-  const [activeProfile, setActiveProfile] = useState<SchoolProfile | null>(null);
+  const [schools, setSchools] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [mode, setMode] = useState<'select' | 'register' | 'admin_login'>('select');
   
-  // Form State
-  const [isEditing, setIsEditing] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [supabaseUrl, setSupabaseUrl] = useState('');
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
-  const [vercelUrl, setVercelUrl] = useState('');
+  // Select Mode State
+  const [selectedSchoolId, setSelectedSchoolId] = useState('');
+  
+  // Register Mode State
+  const [schoolName, setSchoolName] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
   const [gasUrl, setGasUrl] = useState('');
+
+  // Super Admin Login State
+  const superAdminEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'ncrows77@gmail.com').toLowerCase();
+  const [adminUserEmail, setAdminUserEmail] = useState(superAdminEmail);
+  const [adminPassword, setAdminPassword] = useState('');
   
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    loadProfiles();
-  }, []);
+    fetchApprovedSchools();
+  }, [mode]);
 
-  const loadProfiles = () => {
-    const list = getSchoolProfiles();
-    setProfiles(list);
-    setActiveProfile(getActiveSchoolProfile());
+  const fetchApprovedSchools = async () => {
+    if (mode !== 'select') return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase
+        .from('schools')
+        .select('*')
+        .eq('status', 'approved')
+        .order('school_name', { ascending: true });
+
+      if (error) throw error;
+      setSchools(data || []);
+      
+      if (data && data.length > 0) {
+        setSelectedSchoolId(data[0].id);
+      }
+    } catch (err: any) {
+      console.error('Error fetching schools:', err);
+      setError('ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาตรวจสอบอินเทอร์เน็ต หรือให้แน่ใจว่าได้ติดตั้งสคริปต์ SQL บน Supabase แล้ว');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleConnectSchool = () => {
+    if (!selectedSchoolId) {
+      setError('กรุณาเลือกสถานศึกษาเพื่อเชื่อมต่อ');
+      return;
+    }
+
+    const matched = schools.find(s => s.id === selectedSchoolId);
+    if (!matched) return;
+
+    try {
+      const profile: SchoolProfile = {
+        id: matched.id,
+        name: matched.school_name,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+        vercelUrl: import.meta.env.VITE_VERCEL_URL || window.location.origin,
+        gasUrl: matched.gas_url || ''
+      };
+
+      // ล้างข้อมูล super admin mode เผื่อมีค้าง
+      localStorage.removeItem('super_admin_mode');
+
+      localStorage.setItem('school_profiles', JSON.stringify([profile]));
+      localStorage.setItem('active_school_id', profile.id);
+      
+      if (onBackToLogin) {
+        onBackToLogin();
+      } else {
+        window.location.reload();
+      }
+    } catch (err) {
+      setError('เกิดข้อผิดพลาดในการบันทึกโปรไฟล์การเชื่อมต่อ');
+    }
+  };
+
+  const handleRegisterSchool = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMessage(null);
+    
+    const formattedCode = schoolCode.trim().toUpperCase();
+    const formattedEmail = adminEmail.trim().toLowerCase();
 
-    if (!name || !supabaseUrl || !supabaseAnonKey || !vercelUrl) {
+    if (!schoolName || !formattedCode || !formattedEmail) {
       setError('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน');
       return;
     }
 
-    try {
-      // Validate URLs basic check
-      new URL(supabaseUrl);
-      new URL(vercelUrl);
-      if (gasUrl) new URL(gasUrl);
-    } catch (err) {
-      setError('รูปแบบ URL ไม่ถูกต้อง กรุณาตรวจสอบและกรอกใหม่ (เช่น https://example.com)');
+    if (formattedCode.length < 4 || formattedCode.length > 8) {
+      setError('รหัสโรงเรียนต้องมีความยาว 4 - 8 ตัวอักษรภาษาอังกฤษ');
       return;
     }
 
-    const currentList = getSchoolProfiles();
-    
-    if (editId) {
-      // Edit mode
-      const updatedList = currentList.map(p => {
-        if (p.id === editId) {
-          return {
-            ...p,
-            name,
-            supabaseUrl: supabaseUrl.trim(),
-            supabaseAnonKey: supabaseAnonKey.trim(),
-            vercelUrl: vercelUrl.trim(),
-            gasUrl: gasUrl.trim() || undefined
-          };
-        }
-        return p;
-      });
-      localStorage.setItem('school_profiles', JSON.stringify(updatedList));
-      
-      // If updating the active school, re-initialize
-      if (activeProfile?.id === editId) {
-        initSupabase();
-      }
-    } else {
-      // Add mode
-      const newProfile: SchoolProfile = {
-        id: 'school_' + Date.now(),
-        name,
-        supabaseUrl: supabaseUrl.trim(),
-        supabaseAnonKey: supabaseAnonKey.trim(),
-        vercelUrl: vercelUrl.trim(),
-        gasUrl: gasUrl.trim() || undefined
-      };
-      
-      const updatedList = [...currentList, newProfile];
-      localStorage.setItem('school_profiles', JSON.stringify(updatedList));
-      
-      // If it's the first profile, make it active and redirect to login screen
-      if (updatedList.length === 1) {
-        localStorage.setItem('active_school_id', newProfile.id);
-        initSupabase();
-        alert(`ลงทะเบียนโรงเรียนแรกสำเร็จ! กำลังพาท่านไปหน้าเข้าสู่ระบบของ: ${newProfile.name}`);
-        window.location.reload();
-        return;
-      }
-    }
+    setActionLoading(true);
+    try {
+      const { data: existSchool } = await supabase
+        .from('schools')
+        .select('id')
+        .eq('school_code', formattedCode)
+        .maybeSingle();
 
-    // Reset Form
-    setIsEditing(false);
-    setEditId(null);
-    setName('');
-    setSupabaseUrl('');
-    setSupabaseAnonKey('');
-    setVercelUrl('');
-    setGasUrl('');
-    
-    loadProfiles();
+      if (existSchool) {
+        throw new Error('รหัสโรงเรียนนี้ถูกใช้งานไปแล้ว กรุณาใช้รหัสอื่น');
+      }
+
+      const { error: regError } = await supabase
+        .from('schools')
+        .insert([
+          {
+            school_code: formattedCode,
+            school_name: schoolName.trim(),
+            admin_email: formattedEmail,
+            gas_url: gasUrl.trim() || null,
+            status: 'pending' // รออนุมัติ
+          }
+        ]);
+
+      if (regError) throw regError;
+
+      setSuccessMessage(`ยื่นขอเปิดโรงเรียนสำเร็จ! รหัสโรงเรียนของคุณคือ "${formattedCode}" กรุณาแจ้งผู้ดูแลระบบกลาง (Super Admin) เพื่ออนุมัติเปิดใช้งาน เมื่อได้รับอนุมัติแล้ว คุณครูแอดมินอีเมล "${formattedEmail}" จะสามารถเข้าใช้งานได้ทันทีค่ะ`);
+      
+      setSchoolName('');
+      setSchoolCode('');
+      setAdminEmail('');
+      setGasUrl('');
+      
+    } catch (err: any) {
+      setError(err.message || 'ไม่สามารถลงทะเบียนได้ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handleEdit = (profile: SchoolProfile) => {
-    setEditId(profile.id);
-    setName(profile.name);
-    setSupabaseUrl(profile.supabaseUrl);
-    setSupabaseAnonKey(profile.supabaseAnonKey);
-    setVercelUrl(profile.vercelUrl);
-    setGasUrl(profile.gasUrl || '');
-    setIsEditing(true);
+  const handleSuperAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
-  };
+    setActionLoading(true);
 
-  const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`คุณครูยืนยันที่จะลบโปรไฟล์ของ "${name}" หรือไม่?\nข้อมูลการเชื่อมต่อจะถูกลบออกจากเครื่องนี้`)) {
-      const currentList = getSchoolProfiles();
-      const updatedList = currentList.filter(p => p.id !== id);
-      localStorage.setItem('school_profiles', JSON.stringify(updatedList));
+    try {
+      const formattedEmail = adminUserEmail.trim().toLowerCase();
+      
+      // 1. เข้าสู่ระบบผ่าน Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: formattedEmail,
+        password: adminPassword,
+      });
 
-      // If deleted the active school
-      if (activeProfile?.id === id) {
-        if (updatedList.length > 0) {
-          localStorage.setItem('active_school_id', updatedList[0].id);
-        } else {
-          localStorage.removeItem('active_school_id');
+      if (authError) throw authError;
+
+      if (authData.user) {
+        // 2. ดึงข้อมูลโปรไฟล์ (ใช้ maybeSingle() เพื่อป้องกัน Error 406 หากไม่มีแถวข้อมูลในตาราง)
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+
+        // 3. หากไม่มีข้อมูลโปรไฟล์ และล็อกอินเข้ามาด้วยเมล Super Admin ให้สร้างโปรไฟล์ให้ทันที
+        const superAdminEmailVal = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'ncrows77@gmail.com').toLowerCase();
+        if (!profileData && formattedEmail === superAdminEmailVal) {
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: authData.user.id,
+                display_name: 'Super Admin',
+                email: formattedEmail,
+                role: 'admin',
+                status: 'active'
+              }
+            ]);
+            
+          if (insertError) {
+            console.error('Failed to auto-create Super Admin profile:', insertError);
+            throw new Error('ไม่สามารถสร้างโปรไฟล์ระบบกลางได้: ' + insertError.message);
+          }
         }
-        initSupabase();
+
+        const finalRole = profileData?.role || (formattedEmail === superAdminEmailVal ? 'admin' : '');
+
+        if (finalRole === 'admin' || formattedEmail === superAdminEmailVal) {
+          // ยอมรับสิทธิ์แอดมินกลาง
+          localStorage.setItem('super_admin_mode', 'true');
+          localStorage.setItem('active_school_id', 'super_admin');
+          
+          // ล้างโปรไฟล์โรงเรียนทั่วไปออกเพื่อไม่ให้สับสน
+          localStorage.removeItem('school_profiles');
+
+          // รีเฟรชหน้าจอเพื่อสลับเข้าหน้า Super Admin Console ทันที
+          window.location.reload();
+        } else {
+          // หากไม่มีสิทธิ์ ให้สั่งออกจากระบบทันที
+          await supabase.auth.signOut();
+          throw new Error('คุณไม่มีสิทธิ์เข้าใช้งานระบบควบคุมส่วนกลาง (Super Admin Console)');
+        }
       }
-
-      loadProfiles();
+    } catch (err: any) {
+      console.error('Super admin login error:', err);
+      setError(err.message || 'ล็อกอินไม่สำเร็จ กรุณาตรวจสอบอีเมลหรือรหัสผ่าน');
+    } finally {
+      setActionLoading(false);
     }
-  };
-
-  const handleSelect = (profile: SchoolProfile) => {
-    localStorage.setItem('active_school_id', profile.id);
-    initSupabase();
-    setActiveProfile(profile);
-    
-    // Alert and reload to refresh connections
-    alert(`เปลี่ยนไปเชื่อมต่อฐานข้อมูล: ${profile.name}`);
-    window.location.reload();
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-gradient-to-br from-slate-50 to-slate-100 p-6 md:p-12 font-sans">
-      <div className="max-w-4xl mx-auto w-full">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-50 to-orange-50 p-4 font-sans">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/20">
+        
         {/* Header */}
-        <header className="flex items-center justify-between mb-8 pb-6 border-b border-slate-200">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 shadow-sm">
-              <Settings size={26} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-slate-800 tracking-tight">ตั้งค่าการเชื่อมต่อสถานศึกษา</h1>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">Multi-School Connection Settings</p>
-            </div>
-          </div>
-
-          {profiles.length > 0 && !isEditing && (
+        <div className="bg-brand-primary p-8 text-white text-center relative transition-all duration-300">
+          {mode !== 'select' && (
             <button 
-              onClick={onBackToLogin || (() => window.location.reload())}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-xl border border-slate-200 transition-all text-sm"
+              onClick={() => { setMode('select'); setError(null); setSuccessMessage(null); }}
+              className="absolute left-4 top-8 p-2 hover:bg-white/10 rounded-full transition-colors"
             >
-              <ArrowLeft size={16} /> ย้อนกลับไปเข้าสู่ระบบ
+              <ArrowLeft size={20} />
             </button>
           )}
-        </header>
-
-        {isEditing ? (
-          /* Form for Add/Edit */
-          <div className="bg-white rounded-[32px] border border-slate-200/60 shadow-xl overflow-hidden animate-in fade-in duration-300">
-            <div className="p-8 border-b border-slate-50 flex items-center gap-3 bg-slate-50/50">
-              <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-600">
-                <School size={20} />
-              </div>
-              <h3 className="font-black text-slate-800 text-base">
-                {editId ? '📝 แก้ไขข้อมูลโรงเรียน' : '➕ เพิ่มข้อมูลโรงเรียนใหม่'}
-              </h3>
-            </div>
-
-            <form onSubmit={handleSave} className="p-8 space-y-6">
-              {error && (
-                <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm border border-red-100 font-medium">
-                  ⚠️ {error}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 gap-5">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">ชื่อโรงเรียน *</label>
-                  <input 
-                    type="text" 
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="เช่น โรงเรียนบ้านควนโคกยา (โรงเรียนที่ 3)"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Supabase URL *</label>
-                  <input 
-                    type="url" 
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all"
-                    value={supabaseUrl}
-                    onChange={e => setSupabaseUrl(e.target.value)}
-                    placeholder="https://xxxxxx.supabase.co"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Supabase Anon Key *</label>
-                  <textarea 
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-medium text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all"
-                    rows={2}
-                    value={supabaseAnonKey}
-                    onChange={e => setSupabaseAnonKey(e.target.value)}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Vercel Webhook URL (ของบอตไลน์) *</label>
-                  <input 
-                    type="url" 
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all"
-                    value={vercelUrl}
-                    onChange={e => setVercelUrl(e.target.value)}
-                    placeholder="https://school-admin-xxxx.vercel.app"
-                    required
-                  />
-                  <span className="text-[10px] text-slate-400 block ml-1">ระบบจะยิงแจ้งเตือนผ่าน endpoint `/api/line-webhook` ของ Vercel นี้</span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Google Apps Script URL (เบิกสาธารณูปโภค/แนบไฟล์ไดรฟ์ - ไม่จำเป็น)</label>
-                  <input 
-                    type="url" 
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all"
-                    value={gasUrl}
-                    onChange={e => setGasUrl(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/xxxx/exec"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-50">
-                <button 
-                  type="button"
-                  onClick={() => { setIsEditing(false); setEditId(null); setError(null); }}
-                  className="px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-all"
-                >
-                  ยกเลิก
-                </button>
-                <button 
-                  type="submit"
-                  className="flex items-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-sm transition-all"
-                >
-                  <Save size={18} /> บันทึกข้อมูล
-                </button>
-              </div>
-            </form>
+          <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-md">
+            <School size={36} className="text-white" />
           </div>
-        ) : (
-          /* List of Schools */
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="font-black text-slate-700 text-sm uppercase tracking-widest">
-                รายชื่อโรงเรียนที่ตั้งค่าไว้ ({profiles.length})
-              </h3>
-              <button 
-                onClick={() => {
-                  setEditId(null);
-                  setName('');
-                  setSupabaseUrl('');
-                  setSupabaseAnonKey('');
-                  setVercelUrl('');
-                  setGasUrl('');
-                  setIsEditing(true);
-                  setError(null);
-                }}
-                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-sm transition-all text-sm"
-              >
-                <Plus size={16} /> เพิ่มโรงเรียนใหม่
-              </button>
+          <h1 className="text-2xl font-bold">
+            {mode === 'select' && 'เชื่อมต่อสถานศึกษา'}
+            {mode === 'register' && 'ลงทะเบียนขอเปิดโรงเรียนใหม่'}
+            {mode === 'admin_login' && 'Super Admin Console'}
+          </h1>
+          <p className="text-green-100/80 mt-1 text-xs uppercase tracking-widest font-black">
+            {mode === 'admin_login' ? 'ระบบควบคุมกลางสูงสุด' : 'ระบบสารบรรณและบอทน้องชบา AI'}
+          </p>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-8">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm border border-red-100 font-medium mb-5">
+              {error}
             </div>
+          )}
+          
+          {successMessage && (
+            <div className="bg-green-50 text-green-700 p-5 rounded-xl text-sm border border-green-100 font-medium mb-5 leading-relaxed">
+              🎉 {successMessage}
+            </div>
+          )}
 
-            {profiles.length === 0 ? (
-              <div className="bg-white rounded-[32px] border border-slate-200/60 p-12 text-center shadow-xs">
-                <div className="w-16 h-16 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center text-slate-300 mx-auto mb-4">
-                  <School size={32} />
+          {mode === 'select' && (
+            <div className="space-y-6">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-3">
+                  <Loader2 className="animate-spin text-brand-primary" size={32} />
+                  <span className="text-xs font-bold uppercase tracking-wider">กำลังโหลดข้อมูลสถานศึกษา...</span>
                 </div>
-                <h4 className="font-black text-slate-700 text-lg">ยังไม่มีข้อมูลการเชื่อมต่อโรงเรียน</h4>
-                <p className="text-slate-400 text-sm max-w-md mx-auto mt-2 font-medium">
-                  กรุณากดปุ่ม <strong>"เพิ่มโรงเรียนใหม่"</strong> ด้านบน เพื่อกรอกคีย์เชื่อมต่อฐานข้อมูล Supabase และแชทบอตไลน์ของโรงเรียน
-                </p>
-                <div className="mt-6 inline-flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-xl">
-                  <Info size={14} /> สามารถศึกษาขั้นตอนการสร้างคีย์จากไฟล์ MULTISCHOOL_SETUP_GUIDE.md ในโปรเจกต์
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {profiles.map(profile => {
-                  const isActive = activeProfile?.id === profile.id;
-                  return (
-                    <div 
-                      key={profile.id}
-                      className={`bg-white rounded-[32px] border transition-all duration-300 relative group overflow-hidden shadow-xs ${
-                        isActive 
-                          ? 'border-emerald-500 ring-2 ring-emerald-500/10 shadow-emerald-50/50' 
-                          : 'border-slate-200/60 hover:border-slate-300 hover:shadow-md'
-                      }`}
-                    >
-                      {isActive && (
-                        <div className="absolute top-0 right-0 bg-emerald-500 text-white px-4 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
-                          <Check size={12} /> กำลังเชื่อมต่อ
-                        </div>
-                      )}
-
-                      <div className="p-6">
-                        <div className="flex items-start gap-4">
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
-                            isActive ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'
-                          }`}>
-                            <School size={22} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-black text-slate-800 text-base leading-tight truncate pr-16">{profile.name}</h4>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">ID: {profile.id}</p>
-                          </div>
-                        </div>
-
-                        <div className="mt-6 space-y-2.5 pt-4 border-t border-slate-100/80">
-                          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                            <Database size={14} className="text-slate-400 shrink-0" />
-                            <span className="truncate">{profile.supabaseUrl}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                            <Globe size={14} className="text-slate-400 shrink-0" />
-                            <span className="truncate">{profile.vercelUrl}</span>
-                          </div>
-                        </div>
-
-                        <div className="mt-6 flex gap-2 pt-2">
-                          <button
-                            onClick={() => handleSelect(profile)}
-                            disabled={isActive}
-                            className={`flex-1 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
-                              isActive 
-                                ? 'bg-emerald-50 text-emerald-600 cursor-default' 
-                                : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm active:scale-95'
-                            }`}
-                          >
-                            <Check size={14} /> {isActive ? 'เชื่อมต่ออยู่' : 'เลือกเชื่อมต่อ'}
-                          </button>
-                          
-                          <button
-                            onClick={() => handleEdit(profile)}
-                            className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-xl border border-slate-200/50 transition-all active:scale-95"
-                            title="แก้ไขข้อมูล"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-
-                          <button
-                            onClick={() => handleDelete(profile.id, profile.name)}
-                            className="p-2.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl transition-all active:scale-95"
-                            title="ลบโรงเรียน"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
+              ) : (
+                <>
+                  {schools.length > 0 ? (
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">
+                        เลือกโรงเรียนในเครือข่ายของคุณ
+                      </label>
+                      <select
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold text-slate-700"
+                        value={selectedSchoolId}
+                        onChange={(e) => setSelectedSchoolId(e.target.value)}
+                      >
+                        {schools.map(s => (
+                          <option key={s.id} value={s.id}>{s.school_name} ({s.school_code})</option>
+                        ))}
+                      </select>
+                      
+                      <button
+                        onClick={handleConnectSchool}
+                        className="w-full bg-brand-primary hover:bg-green-700 text-white py-4 rounded-2xl font-black text-lg transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 mt-6"
+                      >
+                        <Check size={20} /> เชื่อมต่อระบบโรงเรียน
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                  ) : (
+                    <div className="text-center py-6 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                      <Database className="mx-auto text-slate-300 mb-2" size={32} />
+                      <p className="text-slate-500 font-bold text-sm">ยังไม่พบโรงเรียนที่เปิดใช้งานในระบบ</p>
+                      <p className="text-slate-400 text-xs mt-1">กรุณากดลงทะเบียนโรงเรียนใหม่ด้านล่างค่ะ</p>
+                    </div>
+                  )}
 
-      {/* Footer Info */}
-      <footer className="max-w-4xl mx-auto w-full mt-12 pt-6 border-t border-slate-200 text-center">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-          <p>Smart School Admin © Multi-School Manager</p>
-          <div className="flex gap-4">
-            <span className="flex items-center gap-1 text-slate-500">
-              <Info size={12} />
-              ระบบรหัสเชื่อมต่อเก็บอยู่ในเบราว์เซอร์เครื่องนี้อย่างปลอดภัย
-            </span>
+                  <div className="pt-4 border-t border-slate-100 flex flex-col gap-3">
+                    <button
+                      onClick={() => { setMode('register'); setError(null); setSuccessMessage(null); }}
+                      className="w-full bg-brand-secondary hover:bg-orange-600 text-white py-3.5 rounded-2xl font-black text-sm transition-all shadow-md flex items-center justify-center gap-2 active:scale-95"
+                    >
+                      <Plus size={16} /> ยื่นขอลงทะเบียนโรงเรียนใหม่
+                    </button>
+
+                    <button
+                      onClick={() => { setMode('admin_login'); setError(null); setSuccessMessage(null); }}
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95"
+                    >
+                      <Lock size={12} /> สำหรับผู้ดูแลระบบกลาง (Super Admin)
+                    </button>
+                    
+                    {onBackToLogin && (
+                      <button
+                        onClick={onBackToLogin}
+                        className="w-full bg-slate-50 hover:bg-slate-100 text-slate-500 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 active:scale-95 mt-2"
+                      >
+                        ย้อนกลับหน้าเข้าสู่ระบบ
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {mode === 'register' && (
+            <form onSubmit={handleRegisterSchool} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 tracking-widest">ชื่อโรงเรียน</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold"
+                  placeholder="กรอกชื่อโรงเรียนของคุณ"
+                  value={schoolName}
+                  onChange={(e) => setSchoolName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 tracking-widest">
+                  รหัสโรงเรียนที่ต้องการ (School Code)
+                </label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold uppercase"
+                  placeholder="ตัวอย่างเช่น SKW001 (อังกฤษ 4-8 ตัว)"
+                  value={schoolCode}
+                  onChange={(e) => setSchoolCode(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 tracking-widest">
+                  อีเมลแอดมินหลักประจำโรงเรียน
+                </label>
+                <input
+                  type="email"
+                  required
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold"
+                  placeholder="admin@school.ac.th"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                />
+                <p className="text-[10px] text-slate-400 mt-1 flex items-start gap-1 font-medium leading-relaxed">
+                  <HelpCircle size={10} className="shrink-0 mt-0.5" />
+                  อีเมลนี้จะได้รับการแต่งตั้งเป็นผู้ดูแลระบบ (Admin) ของโรงเรียนโดยอัตโนมัติเมื่อได้รับการอนุมัติใช้งาน
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 tracking-widest">
+                  Google Drive Web App URL (ถ้ามี)
+                </label>
+                <input
+                  type="url"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold text-xs"
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  value={gasUrl}
+                  onChange={(e) => setGasUrl(e.target.value)}
+                />
+                <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                  * หากยังไม่มี สามารถข้ามไปก่อนและตั้งค่าในตัวโปรแกรมภายหลังได้
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="w-full bg-brand-primary hover:bg-green-700 text-white py-4 rounded-2xl font-black text-lg transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-75 mt-4"
+              >
+                {actionLoading ? (
+                  <Loader2 className="animate-spin" size={20} />
+                ) : (
+                  <Send size={18} />
+                )}
+                ส่งคำขอเปิดโรงเรียน
+              </button>
+            </form>
+          )}
+
+          {mode === 'admin_login' && (
+            <form onSubmit={handleSuperAdminLogin} className="space-y-5 animate-in fade-in">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">อีเมลผู้ดูแลระบบกลาง</label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    className="w-full px-4 py-3 pl-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold"
+                    placeholder="superadmin@email.com"
+                    value={adminUserEmail}
+                    onChange={(e) => setAdminUserEmail(e.target.value)}
+                  />
+                  <div className="absolute left-3.5 top-4 text-slate-400"><Mail size={16} /></div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">รหัสผ่าน</label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    required
+                    className="w-full px-4 py-3 pl-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all bg-slate-50 font-bold"
+                    placeholder="••••••••"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                  />
+                  <div className="absolute left-3.5 top-4 text-slate-400"><Lock size={16} /></div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="w-full bg-slate-800 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-lg transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-75 mt-4"
+              >
+                {actionLoading ? (
+                  <Loader2 className="animate-spin" size={20} />
+                ) : (
+                  <Check size={20} />
+                )}
+                เข้าสู่ระบบควบคุมกลาง
+              </button>
+            </form>
+          )}
+
+          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+              © {new Date().getFullYear()} เครือข่ายระบบสารบรรณและบอทชบา AI
+            </p>
           </div>
         </div>
-      </footer>
+
+      </div>
     </div>
   );
 }

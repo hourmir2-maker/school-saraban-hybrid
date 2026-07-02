@@ -41,10 +41,11 @@ export default function OutgoingDocs() {
   const [directorOpinion, setDirectorOpinion] = useState('');
 
   const isDirector = profile?.role === 'director' || profile?.role === 'admin';
+  const defaultSchoolName = import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียน';
 
   const [formData, setFormData] = useState({
     doc_number: '',
-    from_agency: 'โรงเรียนบ้านควนโคกยา',
+    from_agency: defaultSchoolName,
     to_agency: '',
     subject: '',
     doc_date: new Date().toISOString().split('T')[0],
@@ -53,7 +54,7 @@ export default function OutgoingDocs() {
     reference: '',
     closing_phrase: 'จึงเรียนมาเพื่อโปรดทราบ',
     sign_name: '',
-    sign_position: 'ผู้อำนวยการโรงเรียนบ้านควนโคกยา',
+    sign_position: `ผู้อำนวยการ${defaultSchoolName}`,
     contact_phone: '',
     footer_text: '',
     online_submit: true,
@@ -70,14 +71,14 @@ export default function OutgoingDocs() {
   }, []);
 
   async function fetchSettings() {
-    const { data } = await supabase.from('settings').select('*').single();
+    const { data } = await supabase.from('settings').select('*').maybeSingle();
     if (data) {
       setSettings(data);
       setFormData(prev => ({
         ...prev,
-        from_agency: data.school_name || 'โรงเรียนบ้านควนโคกยา',
+        from_agency: data.school_name || defaultSchoolName,
         sign_name: data.director_name || '',
-        sign_position: `ผู้อำนวยการ${data.school_name || 'โรงเรียนบ้านควนโคกยา'}`,
+        sign_position: `ผู้อำนวยการ${data.school_name || defaultSchoolName}`,
         contact_phone: data.phone_number || ''
       }));
     }
@@ -254,7 +255,7 @@ export default function OutgoingDocs() {
 
       const userDetail = aiPurpose.trim() ? `ความต้องการหรือรายละเอียดเพิ่มเติมที่ผู้ใช้ระบุ: "${aiPurpose}"` : 'กรุณาร่างจดหมายตอบกลับที่เหมาะสม';
 
-      const prompt = `คุณคือผู้ช่วยส่วนตัว AI ระดับเชี่ยวชาญด้านงานสารบรรณโรงเรียนบ้านควนโคกยา
+      const prompt = `คุณคือผู้ช่วยส่วนตัว AI ระดับเชี่ยวชาญด้านงานสารบรรณของ ${settings?.school_name || defaultSchoolName}
 กรุณาช่วยร่างจดหมายราชการไทย (หนังสือส่งออก) ตามข้อมูลบริบทด้านล่างนี้:
 
 บริบทหนังสือรับ:
@@ -269,7 +270,7 @@ ${userDetail}
 3. ร่างเนื้อหาหลัก (Content) แบ่งออกเป็นย่อหน้าอย่างสวยงาม:
    - ย่อหน้าแรกต้องเขียนเกริ่นเหตุผลที่มาของการออกจดหมาย โดยอ้างอิงถึงหนังสือรับต้นทางในลักษณะ: "ตามหนังสือที่อ้างถึง [หน่วยงานต้นทาง] ได้แจ้ง/ขอความร่วมมือเรื่อง..." 
    - สำคัญมาก: ห้ามระบุเลขที่หนังสือต้นทาง (เช่น ศธ 04225/...) และห้ามระบุวันที่ลงบนหนังสือต้นทางซ้ำลงไปในเนื้อความย่อหน้าแรกหรือในเนื้อความส่วนอื่นๆ ของจดหมายเด็ดขาด เนื่องจากข้อมูลเหล่านี้ได้ระบุไว้ในช่อง "อ้างถึง" ด้านบนชัดเจนแล้ว (ให้เขียนเกริ่นอ้างถึงเพียงสั้นๆ เช่น "ตามหนังสือที่อ้างถึง..." หรือ "ตามหนังสือที่อ้างถึง [หน่วยงานต้นทาง]..." เท่านั้น)
-   - ย่อหน้าต่อมาให้ระบุการดำเนินงานหรือผลการพิจารณาของโรงเรียนบ้านควนโคกยา
+   - ย่อหน้าต่อมาให้ระบุการดำเนินงานหรือผลการพิจารณาของ ${settings?.school_name || defaultSchoolName}
    - ย่อหน้าสุดท้ายเป็นย่อหน้าสรุปความประสงค์ เช่น "จึงเรียนมาเพื่อโปรดทราบ" หรือ "จึงเรียนมาเพื่อโปรดพิจารณา"
    - ห้ามพิมพ์คำว่า "ที่", "เรื่อง", "เรียน", "อ้างถึง" หรือ "คำลงท้าย" เข้ามาปนในเนื้อหาหลัก (Content)
 4. แนะนำคำลงท้าย (Closing Phrase) ที่เหมาะสม เช่น "จึงเรียนมาเพื่อโปรดทราบ", "จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ" เป็นต้น
@@ -816,7 +817,7 @@ ${userDetail}
   function resetForm() {
     setFormData({ 
       doc_number: getNextDocNumber(), 
-      from_agency: settings?.school_name || 'โรงเรียนบ้านควนโคกยา', 
+      from_agency: settings?.school_name || defaultSchoolName, 
       to_agency: '', 
       subject: '', 
       doc_date: new Date().toISOString().split('T')[0], 
@@ -825,7 +826,7 @@ ${userDetail}
       reference: '',
       closing_phrase: 'จึงเรียนมาเพื่อโปรดทราบ',
       sign_name: settings?.director_name || '',
-      sign_position: `ผู้อำนวยการ${settings?.school_name || 'โรงเรียนบ้านควนโคกยา'}`,
+      sign_position: `ผู้อำนวยการ${settings?.school_name || defaultSchoolName}`,
       contact_phone: settings?.phone_number || '',
       footer_text: '',
       online_submit: true,
