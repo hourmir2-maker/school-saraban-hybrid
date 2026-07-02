@@ -51,10 +51,12 @@ export default function ARAdmin({ onBack }: ARAdminProps) {
     
     setAiGenerating(true);
     try {
-      const { data: settings } = await supabase
-        .from('settings')
-        .select('gemini_api_key, ai_cowork_api_key')
-        .single();
+      const schoolId = localStorage.getItem('active_school_id');
+      let settingsQuery = supabase.from('settings').select('gemini_api_key, ai_cowork_api_key');
+      if (schoolId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolId)) {
+        settingsQuery = settingsQuery.eq('school_id', schoolId);
+      }
+      const { data: settings } = await settingsQuery.maybeSingle();
         
       const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
       if (!apiKey) {

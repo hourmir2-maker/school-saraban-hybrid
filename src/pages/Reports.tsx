@@ -69,7 +69,12 @@ export default function Reports() {
       }
 
       // 2. Fetch current year from settings as default
-      const { data: settings } = await supabase.from('settings').select('current_academic_year').single();      
+      const schoolId = localStorage.getItem('active_school_id');
+      let settingsQuery = supabase.from('settings').select('current_academic_year');
+      if (schoolId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolId)) {
+        settingsQuery = settingsQuery.eq('school_id', schoolId);
+      }
+      const { data: settings } = await settingsQuery.maybeSingle();      
       const currentYear = settings?.current_academic_year || '2568';
 
       if (!uniqueYears.includes(currentYear)) {

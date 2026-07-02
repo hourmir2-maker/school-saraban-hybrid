@@ -283,7 +283,12 @@ export default function AICowork() {
 
       if (buffer && dbData?.id) {
         setUploadProgress('กำลังสกัดคำและคำนวณเวกเตอร์ความรู้สำหรับสืบค้น (RAG)...');
-        const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').single();
+        const schoolId = profile?.school_id || localStorage.getItem('active_school_id');
+        let settingsQuery = supabase.from('settings').select('gemini_api_key, ai_cowork_api_key');
+        if (schoolId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolId)) {
+          settingsQuery = settingsQuery.eq('school_id', schoolId);
+        }
+        const { data: settings } = await settingsQuery.maybeSingle();
         const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
         if (!apiKey) throw new Error('กรุณาตั้งค่า Gemini API Key หรือ AI Cowork API Key ก่อนสร้างความรู้คลังส่วนตัวนะคะ');
         
