@@ -80,3 +80,155 @@
 > [!TIP]
 > **การตั้งค่าสำหรับผู้อำนวยการ (ผอ.):**
 > เมื่อ ผอ. ลงทะเบียนบัญชีในระบบเสร็จเรียบร้อยแล้ว ให้แอดมินไอทีเข้าไปที่เมนู **"จัดการสิทธิ์"** ในแอป Desktop จากนั้นค้นหารายชื่อของ ผอ. แล้วกดสลับบทบาท (Role) จาก `teacher` ให้เป็น **`director`** (ผู้อำนวยการ) เพื่อให้ ผอ. ได้รับสิทธิ์ในการเกษียณหนังสือราชการและรับข้อความปุ่มกดส่งอนุมัติผ่านแชทได้ค่ะ ✍️🌸
+
+---
+
+## 🛠️ ตอนที่ 5: การเตรียมโครงสร้างฐานข้อมูลและ RLS (Database & SQL Setup)
+*สำหรับแอดมินระบบส่วนกลางที่ต้องการติดตั้งหรือล้างตารางข้อมูลใน Supabase ใหม่ เพื่อรองรับระบบ AI และความปลอดภัยระดับ Multi-Tenant*
+
+### 1. คำสั่ง SQL สำหรับสร้างตารางระบบ AI (RAG & Students)
+รันคำสั่งเหล่านี้ใน Supabase SQL Editor เพื่อสร้างตารางสำหรับเก็บข้อมูลของนักเรียนและคลังความรู้ AI:
+
+```sql
+-- 1. เปิดใช้งาน Vector Extension สำหรับระบบสืบค้น AI (RAG)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2. สร้างตารางประวัตินักเรียน (students)
+CREATE TABLE IF NOT EXISTS public.students (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE,
+  student_code TEXT,
+  prefix TEXT,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  class_level TEXT,
+  class_room TEXT,
+  academic_year TEXT DEFAULT '2569',
+  graduation_status TEXT DEFAULT 'ปกติ',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. สร้างตารางคลังสมองความรู้ส่วนกลาง (school_knowledge)
+CREATE TABLE IF NOT EXISTS public.school_knowledge (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE,
+  document_name TEXT NOT NULL,
+  page_number INTEGER DEFAULT 1,
+  chunk_text TEXT NOT NULL,
+  embedding vector(768),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS school_knowledge_embedding_idx ON school_knowledge USING ivfflat (embedding vector_cosine_ops);
+
+-- 4. สร้างตารางคลังเก็บไฟล์ส่วนตัวของครู (ai_knowledge_base)
+CREATE TABLE IF NOT EXISTS public.ai_knowledge_base (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  folder_id TEXT DEFAULT '08',
+  file_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 5. สร้างตารางชิ้นข้อมูลความรู้ส่วนตัวของครู (ai_private_knowledge_chunks)
+CREATE TABLE IF NOT EXISTS public.ai_private_knowledge_chunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  file_id UUID REFERENCES public.ai_knowledge_base(id) ON DELETE CASCADE,
+  teacher_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  page_number INTEGER DEFAULT 1,
+  chunk_text TEXT NOT NULL,
+  embedding vector(768),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS private_chunks_embedding_idx ON ai_private_knowledge_chunks USING ivfflat (embedding vector_cosine_ops);
+```
+
+### 2. คำสั่ง SQL สำหรับฟังก์ชันค้นหา Vector Search
+รันคำสั่งเหล่านี้เพื่อสร้าง RPC Function สำหรับการค้นหาของน้องชบา AI:
+
+```sql
+-- ค้นหาจากคลังกลาง
+CREATE OR REPLACE FUNCTION match_knowledge(
+  query_embedding vector(768),
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 10
+)
+RETURNS TABLE(id UUID, document_name TEXT, page_number INT, chunk_text TEXT, similarity float)
+LANGUAGE sql STABLE AS
+$$
+  SELECT id, document_name, page_number, chunk_text,
+    1 - (embedding <=> query_embedding) AS similarity
+  FROM school_knowledge
+  WHERE 1 - (embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
+
+-- ค้นหาจากคลังส่วนตัวของครู
+CREATE OR REPLACE FUNCTION match_private_knowledge(
+  query_embedding vector(768),
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 10,
+  p_teacher_id UUID DEFAULT NULL
+)
+RETURNS TABLE(id UUID, file_id UUID, page_number INT, chunk_text TEXT, similarity float)
+LANGUAGE sql STABLE AS
+$$
+  SELECT id, file_id, page_number, chunk_text,
+    1 - (embedding <=> query_embedding) AS similarity
+  FROM ai_private_knowledge_chunks
+  WHERE 
+    (p_teacher_id IS NULL OR teacher_id = p_teacher_id)
+    AND 1 - (embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
+```
+
+### 3. คำสั่ง SQL สำหรับเปิดใช้งาน Row Level Security (RLS) เพื่อป้องกันความปลอดภัยข้อมูล
+คำสั่งตั้งค่าและเปิดความปลอดภัยระดับโรงเรียน (Multi-Tenant) เพื่อให้ผู้ใช้เห็นเฉพาะข้อมูลโรงเรียนตัวเองเท่านั้น:
+
+```sql
+-- เปิดการจำกัดสิทธิ์ความปลอดภัย RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
+
+-- 1) Policy ตารางโรงเรียน (schools)
+CREATE POLICY "schools_select_own" ON public.schools 
+FOR SELECT TO authenticated 
+USING (id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
+
+-- 2) Policy ตารางตั้งค่าโรงเรียน (settings)
+CREATE POLICY "settings_select_own" ON public.settings 
+FOR SELECT TO authenticated 
+USING (school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
+
+CREATE POLICY "settings_update_own" ON public.settings 
+FOR UPDATE TO authenticated 
+USING (school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
+
+-- 3) Policy ตารางโปรไฟล์ผู้ใช้งาน (profiles)
+CREATE POLICY "profiles_select_same_school" ON public.profiles 
+FOR SELECT TO authenticated 
+USING (school_id IN (SELECT school_id FROM public.profiles p2 WHERE p2.id = auth.uid()));
+
+CREATE POLICY "profiles_update_own" ON public.profiles 
+FOR UPDATE TO authenticated 
+USING (id = auth.uid());
+
+-- 4) Policy ตารางข้อมูลครู (teachers)
+CREATE POLICY "teachers_select_same_school" ON public.teachers 
+FOR SELECT TO authenticated 
+USING (school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
+
+CREATE POLICY "teachers_insert_own_school" ON public.teachers 
+FOR INSERT TO authenticated 
+WITH CHECK (school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
+
+CREATE POLICY "teachers_update_own_school" ON public.teachers 
+FOR UPDATE TO authenticated 
+USING (school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
+```

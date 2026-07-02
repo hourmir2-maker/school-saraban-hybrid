@@ -88,13 +88,23 @@ export function initSupabase() {
   const profile = getActiveSchoolProfile();
   const url = profile?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '';
   const key = profile?.supabaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const schoolId = localStorage.getItem('active_school_id') || 'school_default';
   
+  const options = {
+    global: {
+      headers: {
+        'x-school-id': schoolId
+      }
+    }
+  };
+
   if (url && key) {
-    currentClient = createClient(url, key);
+    currentClient = createClient(url, key, options);
   } else {
     currentClient = createClient(
       url || 'https://placeholder-url.supabase.co', 
-      key || 'placeholder-key'
+      key || 'placeholder-key',
+      options
     );
   }
 }

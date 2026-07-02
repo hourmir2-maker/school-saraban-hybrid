@@ -56,6 +56,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!error && data) {
         setProfile(data);
         localStorage.setItem(`profile_${userId}`, JSON.stringify(data));
+        
+        // ซิงค์ข้อมูลโรงเรียนเข้า LocalStorage เพื่อให้แผงตั้งค่าและระบบ RLS ดึงข้อมูลถูกต้องทันที
+        if (data.school_id) {
+          localStorage.setItem('active_school_id', data.school_id);
+          
+          const profilesJson = localStorage.getItem('school_profiles');
+          let profilesList: any[] = [];
+          try {
+            profilesList = profilesJson ? JSON.parse(profilesJson) : [];
+          } catch (e) {
+            profilesList = [];
+          }
+          
+          const hasSchool = profilesList.some((p: any) => p.id === data.school_id);
+          if (!hasSchool) {
+            supabase
+              .from('schools')
+              .select('school_name, gas_url')
+              .eq('id', data.school_id)
+              .maybeSingle()
+              .then(({ data: schoolData }) => {
+                if (schoolData) {
+                  const schoolProfile = {
+                    id: data.school_id,
+                    name: schoolData.school_name,
+                    supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+                    supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+                    vercelUrl: import.meta.env.VITE_VERCEL_URL || window.location.origin,
+                    gasUrl: schoolData.gas_url || import.meta.env.VITE_GAS_URL || ''
+                  };
+                  profilesList.push(schoolProfile);
+                  localStorage.setItem('school_profiles', JSON.stringify(profilesList));
+                  import('../lib/supabase').then(m => m.initSupabase());
+                }
+              });
+          }
+        }
       } else if (!data) {
         // --- 🟢 ระบบกู้คืนโปรไฟล์อัตโนมัติอย่างถาวร (Safety Fallback Profile Creator) ---
         // กรณีดึงแล้วไม่พบโปรไฟล์ในตาราง profiles (แต่ล็อกอินใน Auth สำเร็จ) 

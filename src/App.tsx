@@ -140,8 +140,18 @@ function App() {
 
   useEffect(() => {
     async function fetchSchoolName() {
+      // หากยังไม่ได้ล็อกอินเข้าระบบ ให้ข้ามการดึงข้อมูลเพื่อป้องกัน RLS บล็อกและโยน 406
+      if (!user) {
+        setSchoolName(import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียนบ้านควนโคกยา');
+        setSchoolLogo('');
+        setLocalGovName('');
+        return;
+      }
+
       const activeProfile = getActiveSchoolProfile();
-      if (!activeProfile) {
+      const isUUID = activeProfile?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeProfile.id) : false;
+
+      if (!activeProfile || !isUUID) {
         // หากยังไม่มีการตั้งค่าโปรไฟล์โรงเรียนจริง ให้ดึงค่าโรงเรียนตัวอย่างจาก env แทนการยิง API ไปหา placeholder URL
         setSchoolName(import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียนบ้านควนโคกยา');
         setSchoolLogo('');
@@ -150,7 +160,12 @@ function App() {
       }
 
       try {
-        const { data } = await supabase.from('settings').select('school_name, school_logo_url, local_gov_name').single();
+        const { data } = await supabase
+          .from('settings')
+          .select('school_name, school_logo_url, local_gov_name')
+          .eq('school_id', activeProfile.id)
+          .maybeSingle();
+
         if (data?.school_name) setSchoolName(data.school_name);
         if (data?.school_logo_url) setSchoolLogo(data.school_logo_url);
         if (data?.local_gov_name) setLocalGovName(data.local_gov_name);

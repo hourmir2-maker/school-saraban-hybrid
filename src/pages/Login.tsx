@@ -42,9 +42,14 @@ export default function Login({ onManageSchools }: LoginProps) {
 
   async function fetchSchoolSettings() {
     try {
+      const schoolId = localStorage.getItem('active_school_id');
+      const isUUID = schoolId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolId) : false;
+      if (!schoolId || !isUUID) return;
+
       const { data } = await supabase
         .from('settings')
         .select('school_name, school_logo_url')
+        .eq('school_id', schoolId)
         .maybeSingle();
 
       if (data?.school_name) {

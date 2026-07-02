@@ -203,7 +203,13 @@ export default function AICowork() {
     setProcessingStatus({ current: 0, total: 0, fileName: file.name });
 
     try {
-      const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').single();
+      // ดึง settings กรองด้วย school_id เสมอ เพื่อหลีกเลี่ยง RLS บล็อก
+      const schoolId = profile?.school_id || localStorage.getItem('active_school_id');
+      let settingsQuery = supabase.from('settings').select('gemini_api_key, ai_cowork_api_key');
+      if (schoolId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolId)) {
+        settingsQuery = settingsQuery.eq('school_id', schoolId);
+      }
+      const { data: settings } = await settingsQuery.maybeSingle();
       const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
       if (!apiKey) throw new Error('กรุณาตั้งค่า Gemini API Key หรือ AI Cowork API Key ก่อนค่ะ');
 
@@ -323,7 +329,13 @@ export default function AICowork() {
     setIsThinking(true);
 
     try {
-      const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key, current_academic_year').single();
+      // ดึง settings กรองด้วย school_id เสมอ เพื่อหลีกเลี่ยง RLS บล็อก
+      const schoolId = profile?.school_id || localStorage.getItem('active_school_id');
+      let settingsQuery = supabase.from('settings').select('gemini_api_key, ai_cowork_api_key, current_academic_year');
+      if (schoolId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolId)) {
+        settingsQuery = settingsQuery.eq('school_id', schoolId);
+      }
+      const { data: settings } = await settingsQuery.maybeSingle();
       const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
       const currentYear = settings?.current_academic_year || '2569';
       

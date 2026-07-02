@@ -53,25 +53,32 @@ export default function Settings() {
   async function fetchSettings() {
     try {
       setLoading(true);
+      
+      const activeProfile = getActiveSchoolProfile();
+      const isUUID = activeProfile?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeProfile.id) : false;
+      
+      if (!activeProfile?.id || !isUUID) {
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('settings')
         .select('*')
-        .single();
+        .eq('school_id', activeProfile.id)
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is 'no rows'
+      if (error) throw error;
       
       // ดึงค่า gas_url จากตาราง schools
       let gasUrl = '';
-      const activeProfile = getActiveSchoolProfile();
-      if (activeProfile?.id) {
-        const { data: schoolData } = await supabase
-          .from('schools')
-          .select('gas_url')
-          .eq('id', activeProfile.id)
-          .maybeSingle();
-        if (schoolData) {
-          gasUrl = schoolData.gas_url || '';
-        }
+      const { data: schoolData } = await supabase
+        .from('schools')
+        .select('gas_url')
+        .eq('id', activeProfile.id)
+        .maybeSingle();
+      if (schoolData) {
+        gasUrl = schoolData.gas_url || '';
       }
 
       if (data) {
@@ -84,6 +91,7 @@ export default function Settings() {
       } else {
         setSettings(prev => ({
           ...prev,
+          school_id: activeProfile.id,
           gas_url: gasUrl
         }));
       }
@@ -206,17 +214,29 @@ export default function Settings() {
         formattedLineOa = `https://line.me/R/ti/p/@${cleanId}`;
       }
 
+      const activeProfile = getActiveSchoolProfile();
+      const isUUID = activeProfile?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeProfile.id) : false;
+      if (!activeProfile?.id || !isUUID) {
+        alert('ไม่พบรหัสโรงเรียนที่ถูกต้อง กรุณาลงชื่อเข้าใช้งานใหม่อีกครั้ง');
+        return;
+      }
+
       // แยก gas_url ออกจาก payload ของตาราง settings
       const { gas_url, ...settingsPayload } = settings;
 
       const payload = { 
         ...settingsPayload, 
+        school_id: activeProfile.id,
         line_oa_link: formattedLineOa,
         school_logo_url: logoUrl, 
         director_signature_url: sigUrl 
       };
       
-      const { data: existing } = await supabase.from('settings').select('id').maybeSingle();
+      const { data: existing } = await supabase
+        .from('settings')
+        .select('id')
+        .eq('school_id', activeProfile.id)
+        .maybeSingle();
 
       const { error } = existing 
         ? await supabase.from('settings').update(payload).eq('id', existing.id)
@@ -225,14 +245,12 @@ export default function Settings() {
       if (error) throw error;
 
       // อัปเดตตาราง schools
-      const activeProfile = getActiveSchoolProfile();
-      if (activeProfile?.id) {
-        const { error: schoolError } = await supabase
-          .from('schools')
-          .update({ gas_url: gas_url ? gas_url.trim() : null })
-          .eq('id', activeProfile.id);
-          
-        if (schoolError) console.error('Failed to update gas_url in schools:', schoolError);
+      const { error: schoolError } = await supabase
+        .from('schools')
+        .update({ gas_url: gas_url ? gas_url.trim() : null })
+        .eq('id', activeProfile.id);
+        
+      if (schoolError) console.error('Failed to update gas_url in schools:', schoolError);
 
         // อัปเดต LocalStorage เพื่อให้ระบบรับรู้ทันทีโดยไม่ต้องเข้าสู่ระบบใหม่
         const profiles = getSchoolProfiles();
@@ -246,7 +264,6 @@ export default function Settings() {
         
         // โหลด Client Supabase ใหม่
         import('../lib/supabase').then(m => m.initSupabase());
-      }
 
       alert('บันทึกการตั้งค่าเรียบร้อยแล้ว');
       fetchSettings();
@@ -304,7 +321,7 @@ export default function Settings() {
               <input 
                 type="text" 
                 className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
-                value={settings.school_name}
+                value={settings.school_name || ''}
                 onChange={e => setSettings({...settings, school_name: e.target.value})}
                 placeholder="โรงเรียน..."
                 required
@@ -316,7 +333,7 @@ export default function Settings() {
               <textarea 
                 className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
                 rows={3}
-                value={settings.school_address}
+                value={settings.school_address || ''}
                 onChange={e => setSettings({...settings, school_address: e.target.value})}
                 placeholder="ที่อยู่..."
               />
@@ -329,7 +346,7 @@ export default function Settings() {
                 <input 
                   type="text" 
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
-                  value={settings.director_name}
+                  value={settings.director_name || ''}
                   onChange={e => setSettings({...settings, director_name: e.target.value})}
                   placeholder="นาย/นาง/นางสาว..."
                 />
@@ -341,7 +358,7 @@ export default function Settings() {
               <input 
                 type="text" 
                 className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
-                value={settings.local_gov_name}
+                value={settings.local_gov_name || ''}
                 onChange={e => setSettings({...settings, local_gov_name: e.target.value})}
                 placeholder="สพป.พัทลุง เขต 2 / ทต..."
               />
@@ -383,7 +400,7 @@ export default function Settings() {
                   <input 
                     type="password" 
                     className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
-                    value={settings.line_channel_access_token}
+                    value={settings.line_channel_access_token || ''}
                     onChange={e => setSettings({...settings, line_channel_access_token: e.target.value})}
                     placeholder="ใส่ Long-lived Channel Access Token..."
                   />
@@ -393,7 +410,7 @@ export default function Settings() {
                   <input 
                     type="text" 
                     className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
-                    value={settings.line_group_id}
+                    value={settings.line_group_id || ''}
                     onChange={e => setSettings({...settings, line_group_id: e.target.value})}
                     placeholder="เช่น C1234567890abcdef..."
                   />
@@ -433,7 +450,7 @@ export default function Settings() {
               <input 
                 type="password" 
                 className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all"
-                value={settings.gemini_api_key}
+                value={settings.gemini_api_key || ''}
                 onChange={e => setSettings({...settings, gemini_api_key: e.target.value})}
                 placeholder="ใส่ Gemini API Key หลัก (หากมีหลายคีย์ ให้คั่นด้วยเครื่องหมายจุลภาค , )"
               />
@@ -445,7 +462,7 @@ export default function Settings() {
               <input 
                 type="password" 
                 className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-green-100 focus:border-brand-primary transition-all"
-                value={settings.ai_cowork_api_key}
+                value={settings.ai_cowork_api_key || ''}
                 onChange={e => setSettings({...settings, ai_cowork_api_key: e.target.value})}
                 placeholder="ใส่ API Key แยกสำหรับ AI Cowork (หากมีหลายคีย์ ให้คั่นด้วยเครื่องหมายจุลภาค , )"
               />
