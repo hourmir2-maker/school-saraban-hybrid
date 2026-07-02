@@ -39,6 +39,8 @@ export default function Settings() {
   const [selectedSignature, setSelectedSignature] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [sigPreviewUrl, setSigPreviewUrl] = useState<string | null>(null);
+  const [showGasModal, setShowGasModal] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationStatus, setMigrationStatus] = useState('');
@@ -326,9 +328,18 @@ export default function Settings() {
             </div>
 
             <div className="col-span-full space-y-1.5 pt-4 border-t border-slate-50">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-brand-primary">
-                Google Drive Web App (GAS URL) สำหรับเชื่อมข้อมูลและเก็บไฟล์ประจำโรงเรียน
-              </label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-brand-primary">
+                  Google Drive Web App (GAS URL) สำหรับเชื่อมข้อมูลและเก็บไฟล์ประจำโรงเรียน
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowGasModal(true)}
+                  className="text-[10px] text-brand-primary font-black hover:underline uppercase tracking-widest flex items-center gap-1 cursor-pointer"
+                >
+                  📖 ดูคู่มือและโค้ดติดตั้ง
+                </button>
+              </div>
               <input 
                 type="url" 
                 className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all text-xs font-sans"
@@ -850,6 +861,173 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Google Apps Script Modal */}
+      {showGasModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white rounded-[32px] max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-[32px]">
+              <div>
+                <h3 className="font-black text-slate-800 text-lg">คู่มือตั้งค่า Google Drive (Apps Script)</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Google Apps Script Web App Integration</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowGasModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg p-2 rounded-full hover:bg-slate-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-5 text-sm text-slate-600 leading-relaxed font-medium">
+              <div className="space-y-2">
+                <h4 className="font-extrabold text-slate-800 text-sm">💡 ขั้นตอนการจัดทำสคริปต์เชื่อมต่อ:</h4>
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-500 pl-2">
+                  <li>เปิดเว็บไซต์ <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-brand-primary font-bold hover:underline">Google Apps Script</a> โดยล็อกอินด้วยบัญชี Google ของสถานศึกษา</li>
+                  <li>คลิกปุ่ม **"โครงการใหม่" (New Project)** ที่มุมซ้ายบน</li>
+                  <li>ล้างโค้ดตัวอย่างที่แสดงอยู่ในไฟล์ออกทั้งหมด</li>
+                  <li>กดปุ่ม **"คัดลอกโค้ดสคริปต์"** ด้านล่าง นำไปวางในหน้าเขียนโค้ดและกดปุ่มเซฟ (รูปแผ่นดิสก์)</li>
+                  <li>คลิกที่ปุ่ม **"การทำให้ใช้งานได้"** (ปุ่มสีน้ำเงินมุมขวาบน) -> เลือก **"การทำให้ใช้งานได้ใหม่" (New Deployment)**</li>
+                  <li>คลิกที่รูปฟันเฟือง -> เลือกประเภทการทำให้ใช้งานได้เป็น **"เว็บแอป" (Web App)**</li>
+                  <li>ตั้งค่าตัวเลือกดังนี้:
+                    <ul className="list-disc list-inside pl-4 mt-1.5 space-y-1 text-[11px] font-bold">
+                      <li>คำอธิบาย: <span className="text-slate-400">ระบบอัปโหลดไฟล์สารบรรณ</span></li>
+                      <li>รันในฐานะ: <span className="text-brand-primary">"ฉัน" (Me / อีเมลของคุณ)</span></li>
+                      <li>ผู้มีสิทธิ์เข้าถึง: <span className="text-red-500">"ทุกคน" (Anyone)</span></li>
+                    </ul>
+                  </li>
+                  <li>คลิกปุ่ม **"ทำให้ใช้งานได้"** -> หากมีป๊อปอัปให้สิทธิ์ ให้กด **"ตรวจสอบสิทธิ์"** และทำตามขั้นตอนจนเสร็จสิ้น</li>
+                  <li>คัดลอก **"URL เว็บแอป" (Web App URL)** ที่ได้ นำมาวางลงในช่องกรอกในแผงตั้งค่าด้านหลังครับ</li>
+                </ol>
+              </div>
+
+              {/* Code Area */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-extrabold text-slate-800 text-sm">📋 โค้ดสคริปต์ Google Apps Script (รหัส.gs):</h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(GAS_SCRIPT_CODE);
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    }}
+                    className={`text-xs font-black px-4 py-2 rounded-xl transition-all ${
+                      isCopied 
+                        ? 'bg-green-500 text-white shadow-md' 
+                        : 'bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20'
+                    }`}
+                  >
+                    {isCopied ? '✓ คัดลอกสำเร็จแล้ว' : '📋 คัดลอกโค้ดสคริปต์'}
+                  </button>
+                </div>
+                <div className="relative font-sans">
+                  <pre className="bg-slate-900 text-slate-200 text-[11px] p-4 rounded-2xl overflow-x-auto max-h-48 font-mono select-all leading-normal">
+                    {GAS_SCRIPT_CODE}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 flex justify-end bg-slate-50/50 rounded-b-[32px]">
+              <button
+                type="button"
+                onClick={() => setShowGasModal(false)}
+                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all"
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const GAS_SCRIPT_CODE = `/**
+ * Google Apps Script (GAS) Web App Code
+ * สำหรับระบบบริหารจัดการข้อมูลโรงเรียน (School Admin System)
+ * ใช้สำหรับบันทึกไฟล์สแกนหนังสือราชการเข้าสู่ Google Drive ของโรงเรียน และตั้งสิทธิ์แชร์ให้อ่านได้อัตโนมัติ
+ */
+
+function doPost(e) {
+  try {
+    // 1. แปลงข้อมูล JSON ที่ส่งมาจากแอปพลิเคชัน
+    var data = JSON.parse(e.postData.contents);
+    
+    // --- กรณีสั่ง ลบไฟล์ (Delete Action) ---
+    if (data.action === 'delete') {
+      var fileId = data.fileId;
+      if (!fileId) {
+        return createJsonResponse({
+          status: 'error',
+          message: 'กรุณาระบุ fileId ที่ต้องการลบ'
+        });
+      }
+      
+      var file = DriveApp.getFileById(fileId);
+      file.setTrashed(true); // ย้ายลงถังขยะ
+      
+      return createJsonResponse({
+        status: 'success',
+        message: 'ย้ายไฟล์ลงถังขยะเรียบร้อยแล้ว'
+      });
+    }
+    
+    // --- กรณีสั่ง อัปโหลดไฟล์ (Upload Action) ---
+    var base64Data = data.base64;
+    var filename = data.filename;
+    var mimeType = data.mimeType;
+    var folderName = data.folder || 'SchoolAdminDocs'; // ชื่อโฟลเดอร์ปลายทาง
+    
+    if (!base64Data || !filename || !mimeType) {
+      return createJsonResponse({
+        status: 'error',
+        message: 'ข้อมูลไม่ครบถ้วน (ต้องการ base64, filename, mimeType)'
+      });
+    }
+    
+    // 2. ถอดรหัสไฟล์จาก Base64 เป็น Binary Blob
+    var decoded = Utilities.base64Decode(base64Data);
+    var blob = Utilities.newBlob(decoded, mimeType, filename);
+    
+    // 3. ค้นหาหรือสร้างโฟลเดอร์ใน Google Drive ของโรงเรียน
+    var folders = DriveApp.getFoldersByName(folderName);
+    var folder;
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+    }
+    
+    // 4. บันทึกไฟล์ลงในโฟลเดอร์ และตั้งสิทธิ์แชร์ "ทุกคนที่มีลิงก์สามารถอ่านได้" (สำหรับเปิด PDF และส่งไลน์)
+    var file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // 5. ส่งลิงก์ไฟล์กลับไปยังแอป
+    var fileUrl = file.getUrl();
+    
+    return createJsonResponse({
+      status: 'success',
+      url: fileUrl,
+      fileId: file.getId()
+    });
+    
+  } catch (error) {
+    return createJsonResponse({
+      status: 'error',
+      message: 'GAS Error: ' + error.toString()
+    });
+  }
+}
+
+// ฟังก์ชันสร้างตัวตอบกลับ JSON ของ Google Apps Script
+function createJsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
