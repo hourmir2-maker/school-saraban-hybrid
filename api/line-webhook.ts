@@ -1813,12 +1813,17 @@ async function handleStartAssign(event: any, params: URLSearchParams, profile: a
 
     // สร้าง Quick Reply Items (แสดงรายชื่อคุณครู)
     const quickReplyItems = teachers.slice(0, 13).map(teacher => {
-      const name = `${teacher.first_name} ${teacher.last_name.substring(0, 5)}`;
+      // LINE API กำหนดให้ label ต้องยาวไม่เกิน 20 ตัวอักษร
+      const name = `${teacher.first_name} ${teacher.last_name.substring(0, 3)}`;
+      let labelText = `${teacher.prefix || ''}${name}`.trim();
+      if (labelText.length > 20) {
+        labelText = labelText.substring(0, 20);
+      }
       return {
         type: 'action',
         action: {
           type: 'postback',
-          label: `${teacher.prefix || ''}${name}`,
+          label: labelText,
           data: `action=assign&doc_id=${docId}&teacher_id=${teacher.id}`,
           displayText: `เลือกมอบหมาย: ${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}`
         }
@@ -1850,10 +1855,11 @@ async function handleAssignTeacher(event: any, params: URLSearchParams, profile:
   // ส่ง Quick Reply สำหรับคำสั่งการแบบด่วน
   const docIdStr = docId || '';
   const teacherIdStr = teacherId || '';
-  const options = ['มอบดำเนินการ', 'ทราบ/ถือปฏิบัติ', 'ประสานงานต่อ', 'พิมพ์ระบุคำสั่งการเอง'];
+  // 'พิมพ์ระบุคำสั่งการเอง' ยาว 21 อักษร เกินลิมิต 20 อักษรของ LINE API จึงย่อเหลือ 'พิมพ์ระบุคำสั่งเอง' (17 อักษร)
+  const options = ['มอบดำเนินการ', 'ทราบ/ถือปฏิบัติ', 'ประสานงานต่อ', 'พิมพ์ระบุคำสั่งเอง'];
   
   const quickReplyItems = options.map(opt => {
-    if (opt === 'พิมพ์ระบุคำสั่งการเอง') {
+    if (opt === 'พิมพ์ระบุคำสั่งเอง') {
       return {
         type: 'action',
         action: {
