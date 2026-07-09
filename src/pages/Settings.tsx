@@ -247,10 +247,13 @@ export default function Settings() {
       // อัปเดตตาราง schools
       const { error: schoolError } = await supabase
         .from('schools')
-        .update({ gas_url: gas_url ? gas_url.trim() : null })
+        .update({ 
+          gas_url: gas_url ? gas_url.trim() : null,
+          line_channel_access_token: settings.line_channel_access_token || null
+        })
         .eq('id', activeProfile.id);
         
-      if (schoolError) console.error('Failed to update gas_url in schools:', schoolError);
+      if (schoolError) console.error('Failed to update schools registry:', schoolError);
 
         // อัปเดต LocalStorage เพื่อให้ระบบรับรู้ทันทีโดยไม่ต้องเข้าสู่ระบบใหม่
         const profiles = getSchoolProfiles();

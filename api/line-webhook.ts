@@ -87,22 +87,51 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ success: false, error: err.message });
     }
   }
-
   try {
     const events = req.body.events || [];
-    // ดึง destination จาก LINE payload เพื่อระบุโรงเรียน
     const destination: string = req.body.destination || '';
     const schoolInfo = destination
       ? await getSchoolByDestination(destination)
       : null;
-    // Fallback: ใช้ ENV token ถ้าไม่พบโรงเรียนใน DB (เช่น ระหว่างตั้งค่าครั้งแรก)
-    const lineToken = schoolInfo?.token || process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-    const activeSchoolId = schoolInfo?.schoolId || '';
-    // ตั้งค่า module-level token ให้ทุก handler ภายใน request นี้ใช้ได้
+
+    let lineToken = schoolInfo?.token || '';
+    let activeSchoolId = schoolInfo?.schoolId || '';
+
+    // ระบบจับคู่อัตโนมัติ (Auto-pairing) สำหรับใช้งานครั้งแรกเมื่อ line_bot_destination ในตาราง schools ยังไม่ถูกตั้งค่า
+    if (!lineToken && destination) {
+      const { data: fallbackSettings } = await supabaseAdmin
+        .from('settings')
+        .select('school_id, line_channel_access_token')
+        .not('line_channel_access_token', 'is', null)
+        .neq('line_channel_access_token', '')
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackSettings?.line_channel_access_token) {
+        lineToken = fallbackSettings.line_channel_access_token;
+        activeSchoolId = fallbackSettings.school_id || '';
+
+        // บันทึกการจับคู่ลงในตาราง schools เพื่อใช้ในอนาคต
+        await supabaseAdmin
+          .from('schools')
+          .update({
+            line_bot_destination: destination,
+            line_channel_access_token: lineToken
+          })
+          .eq('id', activeSchoolId);
+          
+        schoolLineTokenCache.delete(destination);
+      }
+    }
+
+    // หากไม่มีการจับคู่อัตโนมัติ ให้ใช้ค่าเริ่มต้นจาก Environment Variable
+    if (!lineToken) {
+      lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+    }
+
     _requestLineToken = lineToken;
 
     for (const event of events) {
-      if (event.type === 'message' && event.message.type === 'text') {
         const userId = event.source.userId;
         const groupId = event.source.groupId;
         const userMsg = event.message.text.trim();
