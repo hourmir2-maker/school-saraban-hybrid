@@ -40,9 +40,17 @@ export default function Profile() {
     }
   };
 
-  async function fetchSettings() {
+  async function fetchSettings(schoolId?: string | null) {
+    const targetSchoolId = schoolId || localStorage.getItem('active_school_id');
+    const isUUID = targetSchoolId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSchoolId) : false;
+    if (!targetSchoolId || !isUUID) return;
+    
     try {
-      const { data } = await supabase.from('settings').select('line_oa_link').maybeSingle();
+      const { data } = await supabase
+        .from('settings')
+        .select('line_oa_link')
+        .eq('school_id', targetSchoolId)
+        .maybeSingle();
       if (data) setLineLink(data.line_oa_link || '');
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -54,8 +62,8 @@ export default function Profile() {
       setDisplayName(profile.display_name || '');
       setSigPreviewUrl(profile.signature_url || null);
       fetchTeacherInfo(profile.email);
+      fetchSettings(profile.school_id);
     }
-    fetchSettings();
   }, [profile]);
 
   async function handleUpdateProfile(e: React.FormEvent) {
