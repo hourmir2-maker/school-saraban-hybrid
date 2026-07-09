@@ -40,10 +40,14 @@ function getWebhookUrl(): string {
  */
 export async function sendLineNotification(message: string, specificToId?: string, attachments: Attachment[] = []) {
   try {
-    const { data: settings } = await supabase
+    const activeSchoolId = localStorage.getItem('active_school_id');
+    let settingsQuery = supabase
       .from('settings')
-      .select('line_channel_access_token, line_group_id')
-      .single();
+      .select('line_channel_access_token, line_group_id');
+    if (activeSchoolId) {
+      settingsQuery = settingsQuery.eq('school_id', activeSchoolId);
+    }
+    const { data: settings } = await settingsQuery.maybeSingle();
 
     const channelAccessToken = settings?.line_channel_access_token || undefined;
     const groupId = settings?.line_group_id;
@@ -171,10 +175,14 @@ export async function sendInteractiveFlexMessage(
   actions: ActionItem[] = []
 ) {
   try {
-    const { data: settings } = await supabase
+    const activeSchoolId = localStorage.getItem('active_school_id');
+    let settingsQuery = supabase
       .from('settings')
-      .select('line_channel_access_token, line_group_id')
-      .single();
+      .select('line_channel_access_token, line_group_id');
+    if (activeSchoolId) {
+      settingsQuery = settingsQuery.eq('school_id', activeSchoolId);
+    }
+    const { data: settings } = await settingsQuery.maybeSingle();
 
     const channelAccessToken = settings?.line_channel_access_token || undefined;
     const groupId = settings?.line_group_id;
@@ -300,10 +308,14 @@ export async function sendBulkFlexCarousel(
   items: CarouselItem[]
 ) {
   try {
-    const { data: settings } = await supabase
+    const activeSchoolId = localStorage.getItem('active_school_id');
+    let settingsQuery = supabase
       .from('settings')
-      .select('line_channel_access_token, line_group_id')
-      .single();
+      .select('line_channel_access_token, line_group_id');
+    if (activeSchoolId) {
+      settingsQuery = settingsQuery.eq('school_id', activeSchoolId);
+    }
+    const { data: settings } = await settingsQuery.maybeSingle();
 
     const channelAccessToken = settings?.line_channel_access_token || undefined;
     const groupId = settings?.line_group_id;
