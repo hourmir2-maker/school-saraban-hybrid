@@ -90,6 +90,7 @@ export default async function handler(req: any, res: any) {
   try {
     const events = req.body.events || [];
     const destination: string = req.body.destination || '';
+    console.log(`[LINE WEBHOOK] Request received. destination: "${destination}", events count: ${events.length}`);
     const schoolInfo = destination
       ? await getSchoolByDestination(destination)
       : null;
@@ -155,6 +156,7 @@ export default async function handler(req: any, res: any) {
         const profileQuery = supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId);
         if (activeSchoolId) profileQuery.eq('school_id', activeSchoolId);
         const { data: profile } = await profileQuery.maybeSingle();
+        console.log(`[LINE WEBHOOK] Text Message User Profile search result: ${profile ? `Found: ${profile.display_name} (Role: ${profile.role}, School: ${profile.school_id})` : 'Not Found'}`);
 
         if (profile) {
           // ตรวจสอบว่ามี pending action state (สถานะการทำรายการค้าง) หรือไม่
@@ -218,14 +220,21 @@ export default async function handler(req: any, res: any) {
         const params = new URLSearchParams(postbackData);
         const action = params.get('action');
 
+        console.log(`[LINE WEBHOOK] Postback event received. userId="${userId}", action="${action}", data="${postbackData}"`);
+
         const pbProfileQuery = supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId);
         if (activeSchoolId) pbProfileQuery.eq('school_id', activeSchoolId);
         const { data: profile } = await pbProfileQuery.maybeSingle();
 
+        console.log(`[LINE WEBHOOK] Postback Profile search result: ${profile ? `Found: ${profile.display_name} (Role: ${profile.role}, School: ${profile.school_id})` : 'Not Found'}`);
+
         if (!profile) {
+          console.warn(`[LINE WEBHOOK] Profile not found for postback user: "${userId}". Replying auth instructions.`);
           await replyToLine(event.replyToken, 'สวัสดีค่ะ ชบาหาบัญชีที่ผูกกับ LINE ของคุณครูไม่พบค่ะ รบกวนพิมพ์ "อีเมล" บนแชทนี้เพื่อยืนยันตัวตนก่อนใช้งานนะคะ 🌸', lineToken);
           continue;
         }
+
+        console.log(`[LINE WEBHOOK] Executing switch action: "${action}"`);
 
         switch (action) {
           case 'approve_doc':    await handleApproveDoc(event, params, profile); break;
@@ -520,12 +529,25 @@ async function callOpenAI(system: string, user: string, apiKey: string): Promise
 
 async function replyToLine(replyToken: string, text: string, token?: string) {
   const lineToken = token || _requestLineToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!lineToken || !text) return;
-  await fetch('https://api.line.me/v2/bot/message/reply', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${lineToken}` },
-    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: text.substring(0, 5000) }] })
-  });
+  if (!lineToken) {
+    console.warn('[LINE REPLY] LINE token missing');
+    return;
+  }
+  if (!text) return;
+  try {
+    const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${lineToken}` },
+      body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: text.substring(0, 5000) }] })
+    });
+    console.log(`[LINE REPLY] Response status: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[LINE REPLY] API Error body: ${errBody}`);
+    }
+  } catch (err) {
+    console.error('[LINE REPLY] Network error:', err);
+  }
 }
 
 function extractClassLevel(text: string): string | null {
@@ -1056,9 +1078,13 @@ async function callGeminiMultimodal(system: string, user: string, base64Data: st
 
 async function replyToLineFlex(replyToken: string, altText: string, contents: any) {
   const token = _requestLineToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token || !contents) return;
+  if (!token) {
+    console.warn('[LINE REPLY FLEX] LINE token missing');
+    return;
+  }
+  if (!contents) return;
   try {
-    await fetch('https://api.line.me/v2/bot/message/reply', {
+    const res = await fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
@@ -1066,14 +1092,23 @@ async function replyToLineFlex(replyToken: string, altText: string, contents: an
         messages: [{ type: 'flex', altText: altText.substring(0, 400), contents }]
       })
     });
-  } catch (err) { console.error('Reply Flex error:', err); }
+    console.log(`[LINE REPLY FLEX] Response status: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[LINE REPLY FLEX] API Error body: ${errBody}`);
+    }
+  } catch (err) { console.error('[LINE REPLY FLEX] Network error:', err); }
 }
 
 async function replyToLineQuickReply(replyToken: string, text: string, items: any[]) {
   const token = _requestLineToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token || !text) return;
+  if (!token) {
+    console.warn('[LINE REPLY QUICK] LINE token missing');
+    return;
+  }
+  if (!text) return;
   try {
-    await fetch('https://api.line.me/v2/bot/message/reply', {
+    const res = await fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
@@ -1085,7 +1120,12 @@ async function replyToLineQuickReply(replyToken: string, text: string, items: an
         }]
       })
     });
-  } catch (err) { console.error('Reply QuickReply error:', err); }
+    console.log(`[LINE REPLY QUICK] Response status: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[LINE REPLY QUICK] API Error body: ${errBody}`);
+    }
+  } catch (err) { console.error('[LINE REPLY QUICK] Network error:', err); }
 }
 
 async function pushToLine(toId: string | undefined, text: string, schoolId?: string) {
