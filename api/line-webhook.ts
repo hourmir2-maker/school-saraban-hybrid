@@ -1154,7 +1154,10 @@ async function pushToLine(toId: string | undefined, text: string, schoolId?: str
   if (!token) {
     token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
   }
-  if (!token) return;
+  if (!token) {
+    console.warn('[LINE PUSH] Token missing');
+    return;
+  }
 
   let target = toId;
   if (!target) {
@@ -1170,9 +1173,15 @@ async function pushToLine(toId: string | undefined, text: string, schoolId?: str
     }
   }
 
-  if (!target || !text) return;
+  if (!target) {
+    console.warn('[LINE PUSH] Target missing (no line_user_id or group_id)');
+    return;
+  }
+  if (!text) return;
+
+  console.log(`[LINE PUSH] Sending text to target: "${target}"...`);
   try {
-    await fetch('https://api.line.me/v2/bot/message/push', {
+    const res = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
@@ -1180,7 +1189,12 @@ async function pushToLine(toId: string | undefined, text: string, schoolId?: str
         messages: [{ type: 'text', text: text.substring(0, 5000) }]
       })
     });
-  } catch (err) { console.error('Push text error:', err); }
+    console.log(`[LINE PUSH] Response status: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[LINE PUSH] API Error body: ${errBody}`);
+    }
+  } catch (err) { console.error('[LINE PUSH] Network error:', err); }
 }
 
 async function pushToLineFlex(toId: string | undefined, altText: string, contents: any, schoolId?: string) {
@@ -1209,7 +1223,10 @@ async function pushToLineFlex(toId: string | undefined, altText: string, content
   if (!token) {
     token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
   }
-  if (!token) return;
+  if (!token) {
+    console.warn('[LINE PUSH FLEX] Token missing');
+    return;
+  }
 
   let target = toId;
   if (!target) {
@@ -1225,9 +1242,15 @@ async function pushToLineFlex(toId: string | undefined, altText: string, content
     }
   }
 
-  if (!target || !contents) return;
+  if (!target) {
+    console.warn('[LINE PUSH FLEX] Target missing (no line_user_id or group_id)');
+    return;
+  }
+  if (!contents) return;
+
+  console.log(`[LINE PUSH FLEX] Sending flex to target: "${target}"...`);
   try {
-    await fetch('https://api.line.me/v2/bot/message/push', {
+    const res = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
@@ -1235,7 +1258,12 @@ async function pushToLineFlex(toId: string | undefined, altText: string, content
         messages: [{ type: 'flex', altText: altText.substring(0, 400), contents }]
       })
     });
-  } catch (err) { console.error('Push Flex error:', err); }
+    console.log(`[LINE PUSH FLEX] Response status: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[LINE PUSH FLEX] API Error body: ${errBody}`);
+    }
+  } catch (err) { console.error('[LINE PUSH FLEX] Network error:', err); }
 }
 
 // --------------------------------------------------------------------
