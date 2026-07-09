@@ -32,7 +32,8 @@ function doPost(e) {
     var base64Data = data.base64;
     var filename = data.filename;
     var mimeType = data.mimeType;
-    var folderName = data.folder || 'SchoolAdminDocs'; // ชื่อโฟลเดอร์ปลายทาง
+    var mainFolderName = 'ระบบบริหารจัดการข้อมูล'; // ชื่อโฟลเดอร์หลัก
+    var folderName = data.folder || 'SchoolAdminDocs'; // ชื่อโฟลเดอร์ย่อย
     
     if (!base64Data || !filename || !mimeType) {
       return createJsonResponse({
@@ -45,13 +46,21 @@ function doPost(e) {
     var decoded = Utilities.base64Decode(base64Data);
     var blob = Utilities.newBlob(decoded, mimeType, filename);
     
-    // 3. ค้นหาหรือสร้างโฟลเดอร์ใน Google Drive ของโรงเรียน
-    var folders = DriveApp.getFoldersByName(folderName);
-    var folder;
-    if (folders.hasNext()) {
-      folder = folders.next();
+    // 3. ค้นหาหรือสร้างโฟลเดอร์หลัก และโฟลเดอร์ย่อยใน Google Drive
+    var mainFolders = DriveApp.getFoldersByName(mainFolderName);
+    var mainFolder;
+    if (mainFolders.hasNext()) {
+      mainFolder = mainFolders.next();
     } else {
-      folder = DriveApp.createFolder(folderName);
+      mainFolder = DriveApp.createFolder(mainFolderName);
+    }
+    
+    var subFolders = mainFolder.getFoldersByName(folderName);
+    var folder;
+    if (subFolders.hasNext()) {
+      folder = subFolders.next();
+    } else {
+      folder = mainFolder.createFolder(folderName);
     }
     
     // 4. บันทึกไฟล์ลงในโฟลเดอร์ และตั้งสิทธิ์แชร์ "ทุกคนที่มีลิงก์สามารถอ่านได้" (สำหรับเปิด PDF และส่งไลน์)
