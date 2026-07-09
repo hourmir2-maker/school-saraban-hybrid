@@ -1,6 +1,6 @@
-# แผนพัฒนาระบบสิทธิประโยชน์ (Premium Subscriptions) และระบบควบคุมโควตา AR (AR Quota System) - [ฉบับแก้ไขสเปค]
+# แผนพัฒนาระบบสิทธิประโยชน์ (Premium Subscriptions) และระบบควบคุมโควตา AR (AR Quota System) - [ฉบับสมบูรณ์]
 
-รายงานฉบับนี้จัดทำขึ้นเพื่อปรับปรุงระบบจ่ายเงิน (Paywall) และการจำกัดสิทธิ์ใช้งานระบบสารบรรณระบบ AR ตามกฎเกณฑ์ทางธุรกิจที่คุณครูกำหนดล่าสุดอย่างเคร่งครัด
+รายงานฉบับนี้จัดทำขึ้นเพื่อเป็นแนวทางการอัปเกรดระบบจ่ายเงิน (Paywall), ระบบควบคุมโควตา AR และแผนการบูรณาการระบบแจ้งเตือนสำรองผ่าน **Telegram Bot** แยกโรงเรียนอย่างเป็นระบบ
 
 ---
 
@@ -32,7 +32,7 @@
 
 ## 3. แผนการอัปเกรดระบบฐานข้อมูล (Database Schema Plan)
 
-สคริปต์สำหรับรันใน Supabase SQL Editor เพื่อรองรับระบบโควตา AR และการตรวจสอบ Premium:
+สคริปต์สำหรับรันใน Supabase SQL Editor เพื่อรองรับระบบโควตา AR, Telegram Bot และการตรวจสอบ Premium:
 
 ```sql
 -- 1. เพิ่มฟิลด์ Premium ลงในตาราง schools เพื่อระบุสถานะจ่ายเงิน (ควบคุมโดย Super Admin)
@@ -40,7 +40,15 @@ ALTER TABLE public.schools
 ADD COLUMN IF NOT EXISTS is_premium boolean DEFAULT false,
 ADD COLUMN IF NOT EXISTS premium_expires_at timestamp with time zone;
 
--- 2. สร้างตาราง ar_usages เพื่อบันทึกประวัติการเปิดใช้ระบบ AR แยกรายบุคคล
+-- 2. เพิ่มฟิลด์สำหรับเชื่อม Telegram บอท ในตาราง settings ประจำโรงเรียน
+ALTER TABLE public.settings
+ADD COLUMN IF NOT EXISTS telegram_bot_token text;
+
+-- 3. เพิ่มฟิลด์สำหรับเก็บ Chat ID ของผู้ใช้ในตาราง profiles
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS telegram_chat_id text;
+
+-- 4. สร้างตาราง ar_usages เพื่อบันทึกประวัติการเปิดใช้ระบบ AR แยกรายบุคคล
 CREATE TABLE IF NOT EXISTS public.ar_usages (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -49,13 +57,30 @@ CREATE TABLE IF NOT EXISTS public.ar_usages (
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. ปิด RLS ของตาราง log การใช้งาน AR เพื่อให้ระบบประมวลผลได้ราบรื่น
+-- 5. ปิด RLS ของตาราง log การใช้งาน AR เพื่อให้ระบบประมวลผลได้ราบรื่น
 ALTER TABLE public.ar_usages DISABLE ROW LEVEL SECURITY;
 ```
 
 ---
 
-## 4. รายละเอียดขั้นตอนการสกัดโควตาบนหน้าจอ (Application Logic)
+## 4. แผนงานการเพิ่มระบบเชื่อมต่อบอท Telegram (Telegram Bot Integration)
+
+ระบบ Telegram Bot จะทำงานควบคู่ไปกับระบบ LINE Bot เพื่อเป็นช่องทางหลักสำรอง โดยมีการแบ่งระบบและผูกบัญชีดังนี้:
+
+### ⚙️ การแยกโรงเรียนแบบเด็ดขาด (Tenant Isolation)
+1. แต่ละโรงเรียนจะจดทะเบียนสร้างบอทผ่าน `@BotFather` แยกกันโดยอิสระ
+2. จัดเก็บโทเค็นของโรงเรียนไว้ในตาราง `settings.telegram_bot_token` แยกตามโรงเรียน
+3. วางเส้นทาง Webhook ยิงเข้า API เดียวกันบน Vercel แต่แยกโรงเรียนด้วย Parameter บน URL:
+   `https://school-saraban-hybrid.vercel.app/api/telegram-webhook?school_id=ไอดีโรงเรียน`
+
+### 🔗 การดึงไอดีและการผูกบัญชีผู้ใช้ (Telegram Chat ID & User Pairing)
+เมื่อทักบอท Telegram เข้ามา ระบบหลังบ้านจะแกะเลขไอดีผู้ส่งผ่านฟิลด์ `message.chat.id` ของ Payload อัตโนมัติ โดยมีแนวทางเชื่อมโยงโปรไฟล์ 2 แบบ:
+* **แนวทางที่ 1 (พิมพ์อีเมล)**: หากแชททักมาเป็นครั้งแรกและไม่มีไอดีในระบบ บอทจะขอให้พิมพ์อีเมลเพื่อค้นหาโปรไฟล์ในตาราง `profiles` ของโรงเรียนนั้น และบันทึก `telegram_chat_id` ให้ทันที
+* **แนวทางที่ 2 (Deep Linking - แนะนำ)**: ในหน้าจอข้อมูลส่วนตัวบนเว็บหรือแอป Desktop จะมีปุ่ม **"ผูกบัญชี Telegram"** ซึ่งจะพาผู้ใช้ไปยังลิงก์พิเศษ เช่น `https://t.me/Satit01_Bot?start=auth_token_รหัสลับ` เมื่อผู้ใช้กดปุ่ม **Start** บอทจะดึงรหัสลับและผูกบัญชีให้ผู้ใช้แบบอัตโนมัติทันที 100% โดยครูไม่ต้องพิมพ์ข้อมูลใดๆ
+
+---
+
+## 5. รายละเอียดขั้นตอนการควบคุมโควตาบนหน้าจอ (Application Logic)
 
 ### 📌 การควบคุมหน้าสารบรรณพรีเมียม (Memos, Orders, OutgoingDocs):
 ในหน้าจอ `src/pages/Memos.tsx`, `src/pages/Orders.tsx`, และ `src/pages/OutgoingDocs.tsx` จะมีตัวดึงข้อมูล `schools.is_premium` มาเช็คสิทธิ์:
@@ -70,4 +95,4 @@ const [isPremium, setIsPremium] = useState(false);
 2. หากโรงเรียนเป็น Free:
    - ตรวจสอบว่าครูเคยเล่นด่าน `ar_lesson_id` นี้ไปแล้วหรือยังในตาราง `ar_usages`
    - หากเคยเล่นแล้ว -> **อนุญาตให้เล่นซ้ำได้ฟรี**
-   - หากเป็นด่านชิ้นใหม่ -> ตรวจดูยอดรวมที่เล่นไป หาก < 5 ครั้ง จะ insert ข้อมูลลง `ar_usages` และอนุญาตให้เล่นได้ แต่หากครบ 5 ครั้งแล้ว จะล็อคหน้าจอและแสดง Paywall เพื่อความยุติธรรมครับ
+   - หากเป็นด่านชิ้นใหม่ -> ตรวจดูยอดรวมที่เล่นไป หาก < 5 ครั้ง จะ insert ข้อมูลลง `ar_usages` และอนุญาตให้เล่นได้ แต่หากครบ 5 ครั้งแล้ว จะล็อคหน้าจอและแสดง Paywall
