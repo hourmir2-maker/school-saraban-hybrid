@@ -310,7 +310,7 @@ function formatFallbackResponse(context: string, userMsg: string): string {
   return "";
 }
 
-async function handleFastAI(replyToken: string, message: string, _profile: any) {
+async function handleFastAI(replyToken: string, message: string, _profile: any, lineToken?: string) {
   try {
     const { data: sets } = await supabaseAdmin.from('settings').select('school_name, gemini_api_key, ai_cowork_api_key, current_academic_year').limit(1).maybeSingle();
     let apiKey = sets?.ai_cowork_api_key || sets?.gemini_api_key || '';
@@ -825,7 +825,7 @@ ${religionStr}
   return "";
 }
 
-async function handleReceiptOCR(replyToken: string, messageId: string, _profile: any) {
+async function handleReceiptOCR(replyToken: string, messageId: string, _profile: any, lineToken?: string) {
   try {
     await replyToLine(replyToken, "ชบากำลังดึงรูปภาพใบเสร็จของคุณครูและใช้ AI สแกนอ่านรายละเอียดให้อยู่นะคะ สักครู่เดียวค่ะ... 🌸⚡");
     
@@ -1430,7 +1430,7 @@ async function executeDocAssignment(docId: string, teacherId: string, instructio
 // Postback handler functions
 // --------------------------------------------------------------------
 
-async function handleApproveDoc(event: any, params: URLSearchParams, profile: any) {
+async function handleApproveDoc(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const type = params.get('type') || 'outgoing';
   const id = params.get('id');
   const replyToken = event.replyToken;
@@ -1521,7 +1521,7 @@ async function handleApproveDoc(event: any, params: URLSearchParams, profile: an
   }
 }
 
-async function handleRejectDoc(event: any, params: URLSearchParams, profile: any) {
+async function handleRejectDoc(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const type = params.get('type') || 'outgoing';
   const id = params.get('id');
   const replyToken = event.replyToken;
@@ -1548,7 +1548,7 @@ async function handleRejectDoc(event: any, params: URLSearchParams, profile: any
   }
 }
 
-async function handleStartAssign(event: any, params: URLSearchParams, profile: any) {
+async function handleStartAssign(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const docId = params.get('id');
   const replyToken = event.replyToken;
 
@@ -1607,7 +1607,7 @@ async function handleStartAssign(event: any, params: URLSearchParams, profile: a
   }
 }
 
-async function handleAssignTeacher(event: any, params: URLSearchParams, profile: any) {
+async function handleAssignTeacher(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const docId = params.get('doc_id');
   const teacherId = params.get('teacher_id');
   const replyToken = event.replyToken;
@@ -1653,7 +1653,7 @@ async function handleAssignTeacher(event: any, params: URLSearchParams, profile:
   );
 }
 
-async function handleConfirmAssign(event: any, params: URLSearchParams, profile: any) {
+async function handleConfirmAssign(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const docId = params.get('doc_id') || '';
   const teacherId = params.get('teacher_id') || '';
   const instruction = params.get('instruction') || 'มอบดำเนินการ';
@@ -1680,7 +1680,7 @@ async function handleConfirmAssign(event: any, params: URLSearchParams, profile:
   }
 }
 
-async function handleAcknowledge(event: any, params: URLSearchParams, profile: any) {
+async function handleAcknowledge(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const assignmentId = params.get('id');
   const replyToken = event.replyToken;
 
@@ -1736,7 +1736,7 @@ async function handleAcknowledge(event: any, params: URLSearchParams, profile: a
   }
 }
 
-async function handleListPending(event: any, params: URLSearchParams, profile: any) {
+async function handleListPending(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const replyToken = event.replyToken;
 
   try {
@@ -1808,7 +1808,7 @@ async function handleListPending(event: any, params: URLSearchParams, profile: a
   }
 }
 
-async function handleListPendingDocs(event: any, profile: any) {
+async function handleListPendingDocs(event: any, profile: any, lineToken?: string) {
   const replyToken = event.replyToken;
   if (profile.role !== 'director' && profile.role !== 'admin') {
     await replyToLine(replyToken, '❌ ขออภัยค่ะ เมนูนี้สำหรับผู้อำนวยการเช็คหนังสือรอเกษียณเท่านั้นนะคะ 🌸');
@@ -1884,7 +1884,7 @@ async function handleListPendingDocs(event: any, profile: any) {
   }
 }
 
-async function handleReport(event: any, params: URLSearchParams, profile: any) {
+async function handleReport(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
 
   const assignmentId = params.get('id');
   const replyToken = event.replyToken;
@@ -1917,7 +1917,7 @@ async function handleReport(event: any, params: URLSearchParams, profile: any) {
   }
 }
 
-async function handleClose(event: any, params: URLSearchParams, profile: any) {
+async function handleClose(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const assignmentId = params.get('id');
   const replyToken = event.replyToken;
 
@@ -1962,7 +1962,7 @@ async function handleClose(event: any, params: URLSearchParams, profile: any) {
   }
 }
 
-async function handleFeedback(event: any, params: URLSearchParams, profile: any) {
+async function handleFeedback(event: any, params: URLSearchParams, profile: any, lineToken?: string) {
   const assignmentId = params.get('id');
   const replyToken = event.replyToken;
 
@@ -1992,7 +1992,7 @@ async function handleFeedback(event: any, params: URLSearchParams, profile: any)
 // Pending Stateful Action handler (รับข้อความตาม State)
 // --------------------------------------------------------------------
 
-async function handlePendingAction(event: any, pendingState: any, profile: any, userMsg: string) {
+async function handlePendingAction(event: any, pendingState: any, profile: any, userMsg: string, lineToken?: string) {
   const replyToken = event.replyToken;
   const stateId = pendingState.id;
   const action = pendingState.action;
