@@ -1762,13 +1762,15 @@ async function handleRejectDoc(event: any, params: URLSearchParams, profile: any
   }
 
   try {
-    // บันทึก state เฝ้ารอรับเหตุผลสั่งแก้ไข
+    // บันทึก state เฝ้ารอรับเหตุผลสั่งแก้ไข (หมดอายุใน 15 นาที)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     await supabaseAdmin
       .from('line_action_states')
       .insert([{
         user_id: profile.line_user_id,
         action: 'awaiting_reject_reason',
-        context: { type, id }
+        context: { type, id },
+        expires_at: expiresAt
       }]);
 
     await replyToLine(replyToken, '💬 กรุณาพิมพ์เหตุผลการส่งกลับ หรือจุดแก้ไขส่งเข้ามาในแชทนี้ เพื่อแจ้งแก่ผู้ร่างคำเสนอได้เลยค่ะ 🌸');
@@ -1901,13 +1903,15 @@ async function handleConfirmAssign(event: any, params: URLSearchParams, profile:
   }
 
   if (instruction === 'manual') {
-    // บันทึก state เพื่อรอรับข้อความสั่งพิมพ์เอง
+    // บันทึก state เพื่อรอรับข้อความสั่งพิมพ์เอง (หมดอายุใน 15 นาที)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     await supabaseAdmin
       .from('line_action_states')
       .insert([{
         user_id: profile.line_user_id,
         action: 'awaiting_assign_instruction',
-        context: { doc_id: docId, teacher_id: teacherId }
+        context: { doc_id: docId, teacher_id: teacherId },
+        expires_at: expiresAt
       }]);
     await replyToLine(replyToken, '💬 กรุณาพิมพ์ข้อความคำสั่งการของคุณครูส่งเข้ามาในแชทนี้ได้เลยค่ะ 🌸');
   } else {
@@ -2143,13 +2147,15 @@ async function handleReport(event: any, params: URLSearchParams, profile: any, l
       return;
     }
 
-    // บันทึก state เฝ้ารอพิมพ์ผลการทำงาน
+    // บันทึก state เฝ้ารอพิมพ์ผลการทำงาน (หมดอายุใน 15 นาที)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     await supabaseAdmin
       .from('line_action_states')
       .insert([{
         user_id: profile.line_user_id,
         action: 'awaiting_report_text',
-        context: { assignment_id: assignmentId }
+        context: { assignment_id: assignmentId },
+        expires_at: expiresAt
       }]);
 
     await replyToLine(replyToken, `✍️ กรุณาพิมพ์รายงานสรุปผลการดำเนินงานสำหรับเรื่อง "${assignment.incoming_docs?.subject}" ส่งเข้ามาในห้องแชทได้เลยค่ะ ชบาจะนำไปบันทึกรายงานเสนอเสนอ ผอ. ทันที 🌸`);
@@ -2216,13 +2222,15 @@ async function handleFeedback(event: any, params: URLSearchParams, profile: any,
   }
 
   try {
-    // บันทึก state เพื่อรอคำสั่งการเพิ่มเติม
+    // บันทึก state เพื่อรอคำสั่งการเพิ่มเติม (หมดอายุใน 15 นาที)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     await supabaseAdmin
       .from('line_action_states')
       .insert([{
         user_id: profile.line_user_id,
         action: 'awaiting_feedback_text',
-        context: { assignment_id: assignmentId }
+        context: { assignment_id: assignmentId },
+        expires_at: expiresAt
       }]);
 
     await replyToLine(replyToken, '💬 กรุณาพิมพ์ข้อแนะนำหรือคำสั่งการเพิ่มเติมที่ต้องการให้คุณครูดำเนินการแก้ไข/ทำเพิ่มส่งมาได้เลยค่ะ 🌸');
