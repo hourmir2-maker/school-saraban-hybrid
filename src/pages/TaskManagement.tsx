@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { sendLineNotification } from '../lib/lineNotify';
+import { sendLineNotification, sendInteractiveFlexMessage } from '../lib/lineNotify';
 import { uploadFileToDrive } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
@@ -113,9 +113,20 @@ export default function TaskManagement() {
 
       if (error) throw error;
 
-      const msg = `\n✅ รายงานผลงานเสร็จสิ้น\nเรื่อง: ${selectedTask.incoming_docs?.subject}\nผู้ปฏิบัติ: ${selectedTask.teachers?.prefix}${selectedTask.teachers?.first_name} ${selectedTask.teachers?.last_name}\nผลการปฏิบัติ: ${reportText}\n${attachment_urls.length > 0 ? `📁 มีไฟล์หลักฐาน ${attachment_urls.length} ไฟล์` : ''}\n\nรอ ผอ. ตรวจสอบและปิดงาน`;
+      const title = "📊 รายงานผลงานเสร็จสิ้น";
+      const bodyMsg = `เรื่อง: ${selectedTask.incoming_docs?.subject || 'งานมอบหมาย'}\nผู้ปฏิบัติ: ${selectedTask.teachers?.prefix || ''}${selectedTask.teachers?.first_name || ''} ${selectedTask.teachers?.last_name || ''}\nผลการปฏิบัติ: ${reportText}\n${attachment_urls.length > 0 ? `📁 มีไฟล์หลักฐาน ${attachment_urls.length} ไฟล์` : ''}`;
       
-      await sendLineNotification(msg);
+      const actions = [
+        { label: '✅ ทราบ/ปิดงาน', type: 'postback' as const, data: `action=close&id=${selectedTask.id}`, color: '#1DB446' },
+        { label: '💬 สั่งเพิ่มเติม', type: 'postback' as const, data: `action=feedback&id=${selectedTask.id}`, color: '#007AFF' }
+      ];
+
+      await sendInteractiveFlexMessage(
+        undefined, // ส่งเข้ากลุ่มหลัก
+        title,
+        bodyMsg,
+        actions
+      );
       
       setIsReportModalOpen(false);
       setReportText('');
