@@ -35,18 +35,33 @@ export function getSchoolProfiles(): SchoolProfile[] {
   }
 }
 
+const PLACEHOLDER_URLS = [
+  'https://placeholder-url.supabase.co',
+  'https://your-project.supabase.co',
+  'https://YOUR_SECOND_SCHOOL_SUPABASE_URL.supabase.co',
+];
+
+function isPlaceholder(url: string) {
+  return !url || PLACEHOLDER_URLS.includes(url) || url.includes('placeholder');
+}
+
 export function checkAndCreateDefaultProfile() {
   try {
     const profilesJson = localStorage.getItem('school_profiles');
-    let profiles = profilesJson ? JSON.parse(profilesJson) : [];
+    let profiles: SchoolProfile[] = profilesJson ? JSON.parse(profilesJson) : [];
+    
+    // ล้าง profile เก่าที่มี placeholder URL ออกจาก localStorage
+    const cleaned = profiles.filter((p: SchoolProfile) => !isPlaceholder(p.supabaseUrl));
+    if (cleaned.length !== profiles.length) {
+      localStorage.setItem('school_profiles', JSON.stringify(cleaned));
+      profiles = cleaned;
+    }
     
     // ตรวจสอบว่าใน .env มี config ที่ตั้งค่าไว้จริงและไม่ใช่ placeholder
     const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
     const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-    const isRealEnv = envUrl && 
-                      envUrl !== 'https://your-project.supabase.co' && 
-                      envUrl !== 'https://YOUR_SECOND_SCHOOL_SUPABASE_URL.supabase.co' &&
-                      envKey && 
+    const isRealEnv = !isPlaceholder(envUrl) &&
+                      envKey &&
                       envKey !== 'your-anon-key' &&
                       envKey !== 'YOUR_SECOND_SCHOOL_SUPABASE_ANON_KEY';
 
@@ -86,8 +101,15 @@ export function checkAndCreateDefaultProfile() {
 
 export function initSupabase() {
   const profile = getActiveSchoolProfile();
-  const url = profile?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '';
-  const key = profile?.supabaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  
+  // ใช้ URL จาก profile เฉพาะเมื่อไม่ใช่ placeholder
+  const profileUrl = profile?.supabaseUrl && !isPlaceholder(profile.supabaseUrl)
+    ? profile.supabaseUrl
+    : '';
+  const profileKey = profileUrl ? profile?.supabaseAnonKey : '';
+
+  const url = profileUrl || import.meta.env.VITE_SUPABASE_URL || '';
+  const key = profileKey || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
   const schoolId = localStorage.getItem('active_school_id') || 'school_default';
   
   const options = {
@@ -98,12 +120,14 @@ export function initSupabase() {
     }
   };
 
-  if (url && key) {
+  if (url && key && !isPlaceholder(url)) {
     currentClient = createClient(url, key, options);
   } else {
+    // ไม่มี config จริง — สร้าง dummy client เพื่อป้องกัน crash
+    // แอปจะแสดง error ให้ user ทราบผ่าน UI แทน
     currentClient = createClient(
-      url || 'https://placeholder-url.supabase.co', 
-      key || 'placeholder-key',
+      'https://placeholder-url.supabase.co',
+      'placeholder-key',
       options
     );
   }
