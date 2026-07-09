@@ -11,6 +11,27 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://placeholder-url.su
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
+// Cache token ต่อโรงเรียน (TTL 5 นาที เพื่อลด DB query)
+const schoolLineTokenCache = new Map<string, { token: string; schoolId: string; expiry: number }>();
+
+async function getSchoolByDestination(destination: string): Promise<{ token: string; schoolId: string } | null> {
+  const cached = schoolLineTokenCache.get(destination);
+  if (cached && cached.expiry > Date.now()) return cached;
+
+  const { data } = await supabaseAdmin
+    .from('schools')
+    .select('id, line_channel_access_token')
+    .eq('line_bot_destination', destination)
+    .eq('status', 'approved')
+    .maybeSingle();
+
+  if (!data?.line_channel_access_token) return null;
+
+  const result = { token: data.line_channel_access_token, schoolId: data.id };
+  schoolLineTokenCache.set(destination, { ...result, expiry: Date.now() + 5 * 60 * 1000 });
+  return result;
+}
+
 export default async function handler(req: any, res: any) {
   if (!process.env.VITE_SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.VITE_SUPABASE_ANON_KEY)) {
     return res.status(500).json({
@@ -56,6 +77,15 @@ export default async function handler(req: any, res: any) {
 
   try {
     const events = req.body.events || [];
+    // ดึง destination จาก LINE payload เพื่อระบุโรงเรียน
+    const destination: string = req.body.destination || '';
+    const schoolInfo = destination
+      ? await getSchoolByDestination(destination)
+      : null;
+    // Fallback: ใช้ ENV token ถ้าไม่พบโรงเรียนใน DB (เช่น ระหว่างตั้งค่าครั้งแรก)
+    const lineToken = schoolInfo?.token || process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+    const activeSchoolId = schoolInfo?.schoolId || '';
+
     for (const event of events) {
       if (event.type === 'message' && event.message.type === 'text') {
         const userId = event.source.userId;
@@ -65,15 +95,15 @@ export default async function handler(req: any, res: any) {
         // --- ฟีเจอร์อำนวยความสะดวก: ตรวจสอบ Group ID / User ID ---
         if (userMsg === 'เช็คไอดีกลุ่ม' || userMsg.toLowerCase() === 'group id') {
           if (groupId) {
-            await replyToLine(event.replyToken, `ไอดีกลุ่มนี้คือ:\n👉 ${groupId}\n\nคุณครูสามารถคัดลอกไอดีนี้ไปกรอกในหน้าตั้งค่าระบบได้เลยค่ะ 🌸`);
+            await replyToLine(event.replyToken, `ไอดีกลุ่มนี้คือ:\n👉 ${groupId}\n\nคุณครูสามารถคัดลอกไอดีนี้ไปกรอกในหน้าตั้งค่าระบบได้เลยค่ะ 🌸`, lineToken);
           } else {
-            await replyToLine(event.replyToken, `ข้อความนี้ไม่ได้ส่งมาจากกลุ่มค่ะ ชบาหาไอดีกลุ่มไม่พบนะคะ 🌸`);
+            await replyToLine(event.replyToken, `ข้อความนี้ไม่ได้ส่งมาจากกลุ่มค่ะ ชบาหาไอดีกลุ่มไม่พบนะคะ 🌸`, lineToken);
           }
           continue;
         }
 
         if (userMsg === 'เช็คไอดีผู้ใช้' || userMsg.toLowerCase() === 'my id') {
-          await replyToLine(event.replyToken, `ไอดีผู้ใช้ของคุณครูคือ:\n👉 ${userId}\n\nสามารถใช้สำหรับผูกบัญชีรายบุคคลได้ค่ะ 🌸`);
+          await replyToLine(event.replyToken, `ไอดีผู้ใช้ของคุณครูคือ:\n👉 ${userId}\n\nสามารถใช้สำหรับผูกบัญชีรายบุคคลได้ค่ะ 🌸`, lineToken);
           continue;
         }
 
@@ -91,15 +121,15 @@ export default async function handler(req: any, res: any) {
             .maybeSingle();
 
           if (pendingState) {
-            await handlePendingAction(event, pendingState, profile, userMsg);
+            await handlePendingAction(event, pendingState, profile, userMsg, lineToken);
           } else {
             // เช็คว่าเป็นคำสั่งเรียกดูงานค้างของครูหรือไม่
             if (userMsg === 'รายงานผล' || userMsg === 'ส่งงาน' || userMsg.includes('งานค้าง')) {
-              await handleListPending(event, new URLSearchParams(''), profile);
+              await handleListPending(event, new URLSearchParams(''), profile, lineToken);
             } else if ((profile.role === 'director' || profile.role === 'admin') && (userMsg.includes('รอสั่งการ') || userMsg.includes('รอเกษียณ'))) {
-              await handleListPendingDocs(event, profile);
+              await handleListPendingDocs(event, profile, lineToken);
             } else {
-              await handleFastAI(event.replyToken, userMsg, profile);
+              await handleFastAI(event.replyToken, userMsg, profile, lineToken);
             }
           }
 
@@ -111,12 +141,12 @@ export default async function handler(req: any, res: any) {
               if (found.email) {
                 await supabaseAdmin.from('teachers').update({ line_user_id: userId }).ilike('email', found.email);
               }
-              await replyToLine(event.replyToken, `ยืนยันตัวตนสำเร็จค่ะคุณครู ${found.display_name}! น้องชบาพร้อมรับใช้แล้วค่ะ ถามงานได้ทันทีเลยนะคะ`);
+              await replyToLine(event.replyToken, `ยืนยันตัวตนสำเร็จค่ะคุณครู ${found.display_name}! น้องชบาพร้อมรับใช้แล้วค่ะ ถามงานได้ทันทีเลยนะคะ`, lineToken);
             } else {
-              await replyToLine(event.replyToken, 'ไม่พบอีเมลในระบบค่ะ รบกวนเช็คอีกครั้งนะคะ');
+              await replyToLine(event.replyToken, 'ไม่พบอีเมลในระบบค่ะ รบกวนเช็คอีกครั้งนะคะ', lineToken);
             }
           } else {
-            await replyToLine(event.replyToken, 'สวัสดีค่ะ ชบาคือ "น้องชบา" ค่ะ รบกวนคุณครูพิมพ์ "อีเมล" เพื่อเริ่มใช้งานนะคะ');
+            await replyToLine(event.replyToken, 'สวัสดีค่ะ ชบาคือ "น้องชบา" ค่ะ รบกวนคุณครูพิมพ์ "อีเมล" เพื่อเริ่มใช้งานนะคะ', lineToken);
           }
         }
       }
@@ -126,9 +156,9 @@ export default async function handler(req: any, res: any) {
         const messageId = event.message.id;
         const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId).maybeSingle();
         if (profile) {
-          await handleReceiptOCR(event.replyToken, messageId, profile);
+          await handleReceiptOCR(event.replyToken, messageId, profile, lineToken);
         } else {
-          await replyToLine(event.replyToken, 'สวัสดีค่ะ รบกวนยืนยันตัวตนด้วยการกรอกอีเมลของคุณครูก่อนเริ่มส่งใบเสร็จให้ชบาสแกนนะคะ 🌸');
+          await replyToLine(event.replyToken, 'สวัสดีค่ะ รบกวนยืนยันตัวตนด้วยการกรอกอีเมลของคุณครูก่อนเริ่มส่งใบเสร็จให้ชบาสแกนนะคะ 🌸', lineToken);
         }
       }
 
@@ -146,7 +176,7 @@ export default async function handler(req: any, res: any) {
           .maybeSingle();
 
         if (!profile) {
-          await replyToLine(event.replyToken, 'สวัสดีค่ะ ชบาหาบัญชีที่ผูกกับ LINE ของคุณครูไม่พบค่ะ รบกวนพิมพ์ "อีเมล" บนแชทนี้เพื่อยืนยันตัวตนก่อนใช้งานนะคะ 🌸');
+          await replyToLine(event.replyToken, 'สวัสดีค่ะ ชบาหาบัญชีที่ผูกกับ LINE ของคุณครูไม่พบค่ะ รบกวนพิมพ์ "อีเมล" บนแชทนี้เพื่อยืนยันตัวตนก่อนใช้งานนะคะ 🌸', lineToken);
           continue;
         }
 
@@ -435,12 +465,12 @@ async function callOpenAI(system: string, user: string, apiKey: string): Promise
   return "";
 }
 
-async function replyToLine(replyToken: string, text: string) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token || !text) return;
+async function replyToLine(replyToken: string, text: string, token?: string) {
+  const lineToken = token || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!lineToken || !text) return;
   await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${lineToken}` },
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: text.substring(0, 5000) }] })
   });
 }
