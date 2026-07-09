@@ -11,6 +11,9 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://placeholder-url.su
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
+// Module-level token สำหรับ request ปัจจุบัน (set ในต้น handler, ล้างเมื่อจบ request)
+let _requestLineToken = '';
+
 // Cache token ต่อโรงเรียน (TTL 5 นาที เพื่อลด DB query)
 const schoolLineTokenCache = new Map<string, { token: string; schoolId: string; expiry: number }>();
 
@@ -43,9 +46,19 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
 
   // 0. รองรับการส่งแจ้งเตือนจาก Electron (Client-side push requests)
-  const { lineUserId, message, payload, token: clientToken } = req.body || {};
+  const { lineUserId, message, payload, token: clientToken, schoolId: clientSchoolId } = req.body || {};
   if ((lineUserId && message) || payload) {
-    const token = clientToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    let token = clientToken;
+    // ถ้าไม่มี token ส่งมา ให้ดึงจาก school ใน DB
+    if (!token && clientSchoolId) {
+      const { data: schoolData } = await supabaseAdmin
+        .from('schools')
+        .select('line_channel_access_token')
+        .eq('id', clientSchoolId)
+        .maybeSingle();
+      token = schoolData?.line_channel_access_token || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    }
+    if (!token) token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
     if (!token) {
       return res.status(500).json({ message: 'LINE Channel Access Token not configured on server' });
     }
@@ -85,6 +98,8 @@ export default async function handler(req: any, res: any) {
     // Fallback: ใช้ ENV token ถ้าไม่พบโรงเรียนใน DB (เช่น ระหว่างตั้งค่าครั้งแรก)
     const lineToken = schoolInfo?.token || process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
     const activeSchoolId = schoolInfo?.schoolId || '';
+    // ตั้งค่า module-level token ให้ทุก handler ภายใน request นี้ใช้ได้
+    _requestLineToken = lineToken;
 
     for (const event of events) {
       if (event.type === 'message' && event.message.type === 'text') {
@@ -107,7 +122,9 @@ export default async function handler(req: any, res: any) {
           continue;
         }
 
-        const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId).maybeSingle();
+        const profileQuery = supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId);
+        if (activeSchoolId) profileQuery.eq('school_id', activeSchoolId);
+        const { data: profile } = await profileQuery.maybeSingle();
 
         if (profile) {
           // ตรวจสอบว่ามี pending action state (สถานะการทำรายการค้าง) หรือไม่
@@ -154,7 +171,9 @@ export default async function handler(req: any, res: any) {
       if (event.type === 'message' && event.message.type === 'image') {
         const userId = event.source.userId;
         const messageId = event.message.id;
-        const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId).maybeSingle();
+        const imgProfileQuery = supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId);
+        if (activeSchoolId) imgProfileQuery.eq('school_id', activeSchoolId);
+        const { data: profile } = await imgProfileQuery.maybeSingle();
         if (profile) {
           await handleReceiptOCR(event.replyToken, messageId, profile, lineToken);
         } else {
@@ -169,11 +188,9 @@ export default async function handler(req: any, res: any) {
         const params = new URLSearchParams(postbackData);
         const action = params.get('action');
 
-        const { data: profile } = await supabaseAdmin
-          .from('profiles')
-          .select('*')
-          .eq('line_user_id', userId)
-          .maybeSingle();
+        const pbProfileQuery = supabaseAdmin.from('profiles').select('*').eq('line_user_id', userId);
+        if (activeSchoolId) pbProfileQuery.eq('school_id', activeSchoolId);
+        const { data: profile } = await pbProfileQuery.maybeSingle();
 
         if (!profile) {
           await replyToLine(event.replyToken, 'สวัสดีค่ะ ชบาหาบัญชีที่ผูกกับ LINE ของคุณครูไม่พบค่ะ รบกวนพิมพ์ "อีเมล" บนแชทนี้เพื่อยืนยันตัวตนก่อนใช้งานนะคะ 🌸', lineToken);
@@ -466,7 +483,7 @@ async function callOpenAI(system: string, user: string, apiKey: string): Promise
 }
 
 async function replyToLine(replyToken: string, text: string, token?: string) {
-  const lineToken = token || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const lineToken = token || _requestLineToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!lineToken || !text) return;
   await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
@@ -829,7 +846,7 @@ async function handleReceiptOCR(replyToken: string, messageId: string, _profile:
   try {
     await replyToLine(replyToken, "ชบากำลังดึงรูปภาพใบเสร็จของคุณครูและใช้ AI สแกนอ่านรายละเอียดให้อยู่นะคะ สักครู่เดียวค่ะ... 🌸⚡");
     
-    const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    const token = lineToken || _requestLineToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
     if (!token) throw new Error("LINE_CHANNEL_ACCESS_TOKEN not configured");
 
     // 1. ดาวน์โหลด Content ของรูปภาพ
@@ -919,7 +936,7 @@ async function callGeminiMultimodal(system: string, user: string, base64Data: st
 // ====================================================================
 
 async function replyToLineFlex(replyToken: string, altText: string, contents: any) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = _requestLineToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token || !contents) return;
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -934,7 +951,7 @@ async function replyToLineFlex(replyToken: string, altText: string, contents: an
 }
 
 async function replyToLineQuickReply(replyToken: string, text: string, items: any[]) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = _requestLineToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token || !text) return;
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {

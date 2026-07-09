@@ -244,3 +244,41 @@ CREATE POLICY "teachers_update_own_school" ON public.teachers
 FOR UPDATE TO authenticated 
 USING (school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
 ```
+
+---
+
+## 🤖 การตั้งค่า LINE Bot แยกตามโรงเรียน
+
+ระบบออกแบบให้รองรับ **LINE Bot แยกต่างหากสำหรับแต่ละโรงเรียน** เพื่อให้ครูในโรงเรียน A ได้รับการตอบกลับจาก Bot ของโรงเรียน A เท่านั้น ไม่ปะปนกับโรงเรียน B
+
+### ⚙️ ค่าที่ต้องกรอกในฐานข้อมูล (ตาราง `schools`)
+
+| ฟิลด์ | ความหมาย | วิธีรับค่า |
+|-------|-----------|-----------|
+| `line_channel_access_token` | Channel Access Token ของ LINE OA โรงเรียน | ดูจาก LINE Developers Console → Messaging API → Channel access token → กด **Issue** |
+| `line_bot_destination` | รหัสระบุตัวตนของ Bot (ค่า `destination` ใน Webhook payload) | กดปุ่ม **Verify** ที่ Webhook URL ใน LINE Developers แล้วตรวจ log หรือดูใน `req.body.destination` |
+
+### 🔄 วิธีที่ระบบทำงาน
+
+1. เมื่อครูส่งข้อความมาที่ LINE Bot โรงเรียน A — ระบบจะได้รับค่า `destination` จาก LINE payload
+2. ระบบค้นหาโรงเรียนที่มี `line_bot_destination` ตรงกันในตาราง `schools`
+3. ดึง `line_channel_access_token` ของโรงเรียนนั้นมาใช้ตอบกลับ
+4. Query ข้อมูล profile ด้วย `line_user_id` **พร้อม** `school_id` เพื่อกันข้อมูลปะปนข้ามโรงเรียน
+
+### 📝 คำสั่ง SQL เพิ่ม Index เร่งความเร็ว
+
+```sql
+-- รันใน Supabase SQL Editor หรือใช้ไฟล์ supabase_patch_line_index.sql
+CREATE INDEX IF NOT EXISTS idx_profiles_line_user_school 
+  ON profiles(line_user_id, school_id);
+
+CREATE INDEX IF NOT EXISTS idx_schools_line_destination 
+  ON schools(line_bot_destination) 
+  WHERE line_bot_destination IS NOT NULL;
+```
+
+> [!IMPORTANT]
+> **ขั้นตอนการ Verify Bot:** หลังกรอก Webhook URL แล้วกดปุ่ม Verify ใน LINE Developers — ระบบจะส่ง ping มาที่ webhook และ log จะแสดงค่า `destination` (เริ่มต้นด้วยอักษร U หรือ C) ให้คัดลอกค่านี้ไปกรอกในฟิลด์ `line_bot_destination` ของโรงเรียนค่ะ
+
+> [!NOTE]
+> ครูในโรงเรียน A จะได้รับการตอบกลับจาก Bot ของโรงเรียน A **เท่านั้น** แม้ว่าจะใช้ระบบ Webhook URL เดียวกันก็ตาม เนื่องจากระบบแยกแยะโรงเรียนด้วยค่า `line_bot_destination` ที่ไม่ซ้ำกัน
