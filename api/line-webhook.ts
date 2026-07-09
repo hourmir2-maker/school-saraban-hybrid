@@ -586,7 +586,7 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
   
   const rules = [
     {
-      keys: ['ครู', 'คุณครู', 'บุคลากร', 'ผู้สอน', 'เวร', 'เวรยาม', 'เวรประจำวัน', 'อีเมล', 'อีเมล์', 'เมล', 'เบอร์โทร', 'เบอร์โทรศัพท์', 'เบอร์ติดต่อ'],
+      keys: ['ครู', 'คุณครู', 'บุคลากร', 'ผู้สอน', 'เวร', 'เวรยาม', 'เวรประจำวัน', 'อีเมล', 'อีเมล์', 'เมล', 'เบอร์โทร', 'เบอร์โทรศัพท์', 'เบอร์ติดต่อ', 'มีใครบ้าง', 'ใครบ้าง', 'ชื่ออะไรบ้าง', 'มีใคร'],
       fetch: async () => {
         let teachersQuery = supabase.from('teachers').select('id, prefix, first_name, last_name, position, department, phone, email, status');
         if (schoolId) {
