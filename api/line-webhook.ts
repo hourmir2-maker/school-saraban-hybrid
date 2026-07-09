@@ -359,7 +359,13 @@ function formatFallbackResponse(context: string, userMsg: string): string {
 
 async function handleFastAI(replyToken: string, message: string, _profile: any, lineToken?: string) {
   try {
-    const { data: sets } = await supabaseAdmin.from('settings').select('school_name, gemini_api_key, ai_cowork_api_key, current_academic_year').limit(1).maybeSingle();
+    let setsQuery = supabaseAdmin.from('settings').select('school_name, gemini_api_key, ai_cowork_api_key, current_academic_year');
+    if (_profile?.school_id) {
+      setsQuery = setsQuery.eq('school_id', _profile.school_id);
+    } else {
+      setsQuery = setsQuery.not('school_id', 'is', null);
+    }
+    const { data: sets } = await setsQuery.limit(1).maybeSingle();
     let apiKey = sets?.ai_cowork_api_key || sets?.gemini_api_key || '';
     if (apiKey.includes(',')) {
       const keys = apiKey.split(',').map((k: string) => k.trim()).filter(Boolean);
@@ -372,7 +378,7 @@ async function handleFastAI(replyToken: string, message: string, _profile: any, 
     console.log(`[LINE WEBHOOK] Message received: "${message}"`);
     
     // 1. Smart Data Fetch (Universal Database Router)
-    const contextData = await smartFetchContext(message, currentYear, supabaseAdmin);
+    const contextData = await smartFetchContext(message, currentYear, supabaseAdmin, _profile?.school_id);
     console.log(`[LINE WEBHOOK] Context Data size: ${contextData.length} chars`);
 
     // 2. High-Speed Direct Prompting with Extraction Tag
@@ -574,7 +580,7 @@ function extractDocSearchWord(message: string): string {
   return keyword.trim();
 }
 
-async function smartFetchContext(message: string, currentYear: string, supabase: any): Promise<string> {
+async function smartFetchContext(message: string, currentYear: string, supabase: any, schoolId?: string | null): Promise<string> {
   const msg = message.toLowerCase();
   const targetClass = extractClassLevel(message);
   
@@ -582,7 +588,11 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
     {
       keys: ['ครู', 'คุณครู', 'บุคลากร', 'ผู้สอน', 'เวร', 'เวรยาม', 'เวรประจำวัน', 'อีเมล', 'อีเมล์', 'เมล', 'เบอร์โทร', 'เบอร์โทรศัพท์', 'เบอร์ติดต่อ'],
       fetch: async () => {
-        const { data: teachers } = await supabase.from('teachers').select('id, prefix, first_name, last_name, position, department, phone, email, status');
+        let teachersQuery = supabase.from('teachers').select('id, prefix, first_name, last_name, position, department, phone, email, status');
+        if (schoolId) {
+          teachersQuery = teachersQuery.eq('school_id', schoolId);
+        }
+        const { data: teachers } = await teachersQuery;
         const { data: duties } = await supabase.from('teacher_duties').select('duty_day, duty_type, teacher_id, teachers(prefix, first_name, last_name)');
         return `รายชื่อครูและบุคลากร: ${JSON.stringify(teachers)}\nตารางเวรประจำวันครู (เชื่อมโยงรายชื่อครูแล้ว): ${JSON.stringify(duties)}`;
       }
@@ -628,6 +638,9 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       fetch: async () => {
         const searchWord = extractDocSearchWord(message);
         let query = supabase.from('incoming_docs').select('doc_number, subject, from_agency, doc_date, urgency, remark, file_url, attachment_urls');
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
         if (searchWord.length > 0) {
           query = query.or(`subject.ilike.%${searchWord}%,doc_number.ilike.%${searchWord}%`);
         }
@@ -640,6 +653,9 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       fetch: async () => {
         const searchWord = extractDocSearchWord(message);
         let query = supabase.from('outgoing_docs').select('doc_number, subject, to_agency, doc_date, urgency, remark, file_url');
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
         if (searchWord.length > 0) {
           query = query.or(`subject.ilike.%${searchWord}%,doc_number.ilike.%${searchWord}%`);
         }
@@ -652,6 +668,9 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       fetch: async () => {
         const searchWord = extractDocSearchWord(message);
         let query = supabase.from('orders').select('order_number, subject, issuer, order_date, remark, file_url');
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
         if (searchWord.length > 0) {
           query = query.or(`subject.ilike.%${searchWord}%,order_number.ilike.%${searchWord}%`);
         }
@@ -664,6 +683,9 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       fetch: async () => {
         const searchWord = extractDocSearchWord(message);
         let query = supabase.from('memos').select('memo_number, subject, requester, memo_date, urgency, remark, file_url');
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
         if (searchWord.length > 0) {
           query = query.or(`subject.ilike.%${searchWord}%,memo_number.ilike.%${searchWord}%`);
         }
@@ -720,7 +742,11 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
     {
       keys: ['การตั้งค่า', 'โรงเรียน', 'ผู้อำนวยการ', 'เบอร์โทร', 'ที่อยู่โรงเรียน', 'ข้อมูลโรงเรียน'],
       fetch: async () => {
-        const { data } = await supabase.from('settings').select('school_name, school_address, director_name, current_academic_year, current_term, phone_number, local_gov_name').limit(1).maybeSingle();
+        let settingsQuery = supabase.from('settings').select('school_name, school_address, director_name, current_academic_year, current_term, phone_number, local_gov_name');
+        if (schoolId) {
+          settingsQuery = settingsQuery.eq('school_id', schoolId);
+        }
+        const { data } = await settingsQuery.limit(1).maybeSingle();
         return `ข้อมูลการตั้งค่าโรงเรียนทั่วไป: ${JSON.stringify(data)}`;
       }
     },
@@ -889,7 +915,13 @@ async function handleReceiptOCR(replyToken: string, messageId: string, _profile:
     const base64Image = Buffer.from(arrayBuffer).toString('base64');
 
     // 2. ดึง API Key
-    const { data: sets } = await supabaseAdmin.from('settings').select('school_name, gemini_api_key').single();
+    let setsQuery = supabaseAdmin.from('settings').select('school_name, gemini_api_key');
+    if (_profile?.school_id) {
+      setsQuery = setsQuery.eq('school_id', _profile.school_id);
+    } else {
+      setsQuery = setsQuery.not('school_id', 'is', null);
+    }
+    const { data: sets } = await setsQuery.limit(1).maybeSingle();
     let apiKey = sets?.gemini_api_key || '';
     if (apiKey.includes(',')) {
       const keys = apiKey.split(',').map((k: string) => k.trim()).filter(Boolean);
