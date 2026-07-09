@@ -1,21 +1,22 @@
 -- ============================================================
--- Supabase Patch: LINE Bot isolation per school
--- ============================================================
--- วัตถุประสงค์: เร่งความเร็วการ query LINE user ตาม school_id
--- และค้นหา Bot token ตาม line_bot_destination
+-- Patch: เพิ่ม Index และการตั้งค่า Multi-School (RLS Auto-Fill)
+-- รันใน Supabase SQL Editor: https://supabase.com/dashboard
 -- ============================================================
 
--- เพิ่ม index เพื่อเร่งความเร็วการ query LINE user ตาม school
+-- 1. Index สำหรับเร่งความเร็วการทำงานของระบบ LINE แยกตามโรงเรียน
 CREATE INDEX IF NOT EXISTS idx_profiles_line_user_school 
   ON profiles(line_user_id, school_id);
 
--- เพิ่ม index สำหรับ line_bot_destination (ใช้ในการ identify โรงเรียน)
-CREATE INDEX IF NOT EXISTS idx_schools_line_destination 
+CREATE INDEX IF NOT EXISTS idx_schools_line_destination_active
   ON schools(line_bot_destination) 
   WHERE line_bot_destination IS NOT NULL;
 
--- ============================================================
--- วิธีใช้:
--- 1. ไปที่ Supabase Dashboard > SQL Editor
--- 2. วาง SQL นี้แล้วกด Run
--- ============================================================
+-- 2. ตั้งค่าให้ school_id ใส่ค่าปัจจุบันของผู้ใช้งานให้อัตโนมัติ (แก้ RLS Violate ตอนเซฟงาน)
+-- เมื่อผู้ใช้อัปโหลดหรือบันทึกข้อมูล ระบบจะตรวจและดึงโรงเรียนของผู้ใช้คนนั้นมาเติมให้อัตโนมัติทันที
+ALTER TABLE incoming_docs ALTER COLUMN school_id SET DEFAULT get_user_school_id();
+ALTER TABLE outgoing_docs ALTER COLUMN school_id SET DEFAULT get_user_school_id();
+ALTER TABLE orders ALTER COLUMN school_id SET DEFAULT get_user_school_id();
+ALTER TABLE memos ALTER COLUMN school_id SET DEFAULT get_user_school_id();
+ALTER TABLE teachers ALTER COLUMN school_id SET DEFAULT get_user_school_id();
+ALTER TABLE settings ALTER COLUMN school_id SET DEFAULT get_user_school_id();
+ALTER TABLE ar_lessons ALTER COLUMN school_id SET DEFAULT get_user_school_id();

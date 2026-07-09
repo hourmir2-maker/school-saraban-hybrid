@@ -1088,17 +1088,42 @@ async function replyToLineQuickReply(replyToken: string, text: string, items: an
   } catch (err) { console.error('Reply QuickReply error:', err); }
 }
 
-async function pushToLine(toId: string | undefined, text: string) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+async function pushToLine(toId: string | undefined, text: string, schoolId?: string) {
+  let token = '';
+  if (schoolId) {
+    try {
+      const { data: schoolData } = await supabaseAdmin
+        .from('schools')
+        .select('line_channel_access_token')
+        .eq('id', schoolId)
+        .maybeSingle();
+      token = schoolData?.line_channel_access_token || '';
+      
+      if (!token) {
+        const { data: settingsData } = await supabaseAdmin
+          .from('settings')
+          .select('line_channel_access_token')
+          .eq('school_id', schoolId)
+          .maybeSingle();
+        token = settingsData?.line_channel_access_token || '';
+      }
+    } catch (e) {
+      console.error('Failed to get school line token in pushToLine:', e);
+    }
+  }
+  if (!token) {
+    token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+  }
   if (!token) return;
 
   let target = toId;
   if (!target) {
     try {
-      const { data: settings } = await supabaseAdmin
-        .from('settings')
-        .select('line_group_id')
-        .single();
+      let q = supabaseAdmin.from('settings').select('line_group_id');
+      if (schoolId) {
+        q = q.eq('school_id', schoolId);
+      }
+      const { data: settings } = await q.limit(1).maybeSingle();
       target = settings?.line_group_id || process.env.LINE_GROUP_ID || '';
     } catch (e) {
       target = process.env.LINE_GROUP_ID || '';
@@ -1118,17 +1143,42 @@ async function pushToLine(toId: string | undefined, text: string) {
   } catch (err) { console.error('Push text error:', err); }
 }
 
-async function pushToLineFlex(toId: string | undefined, altText: string, contents: any) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+async function pushToLineFlex(toId: string | undefined, altText: string, contents: any, schoolId?: string) {
+  let token = '';
+  if (schoolId) {
+    try {
+      const { data: schoolData } = await supabaseAdmin
+        .from('schools')
+        .select('line_channel_access_token')
+        .eq('id', schoolId)
+        .maybeSingle();
+      token = schoolData?.line_channel_access_token || '';
+      
+      if (!token) {
+        const { data: settingsData } = await supabaseAdmin
+          .from('settings')
+          .select('line_channel_access_token')
+          .eq('school_id', schoolId)
+          .maybeSingle();
+        token = settingsData?.line_channel_access_token || '';
+      }
+    } catch (e) {
+      console.error('Failed to get school line token in pushToLineFlex:', e);
+    }
+  }
+  if (!token) {
+    token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+  }
   if (!token) return;
 
   let target = toId;
   if (!target) {
     try {
-      const { data: settings } = await supabaseAdmin
-        .from('settings')
-        .select('line_group_id')
-        .single();
+      let q = supabaseAdmin.from('settings').select('line_group_id');
+      if (schoolId) {
+        q = q.eq('school_id', schoolId);
+      }
+      const { data: settings } = await q.limit(1).maybeSingle();
       target = settings?.line_group_id || process.env.LINE_GROUP_ID || '';
     } catch (e) {
       target = process.env.LINE_GROUP_ID || '';
@@ -1357,10 +1407,14 @@ async function executeDocAssignment(docId: string, teacherId: string, instructio
     }
 
     // 2. ดึงข้อมูล ผอ. และโรงเรียน จาก Settings สำหรับประทับตรา
-    const { data: settings } = await supabaseAdmin
+    const schoolId = doc?.school_id || profile?.school_id;
+    let settingsQuery = supabaseAdmin
       .from('settings')
-      .select('school_name, director_name, director_signature_url')
-      .single();
+      .select('school_name, director_name, director_signature_url');
+    if (schoolId) {
+      settingsQuery = settingsQuery.eq('school_id', schoolId);
+    }
+    const { data: settings } = await settingsQuery.limit(1).maybeSingle();
 
     const schoolLabel = settings?.school_name 
       ? (settings.school_name.startsWith('โรงเรียน') ? settings.school_name : `โรงเรียน${settings.school_name}`)
@@ -1528,7 +1582,7 @@ async function executeDocAssignment(docId: string, teacherId: string, instructio
             action: act.type === 'uri' ? { type: "uri", label: act.label, uri: act.uri } : { type: "postback", label: act.label, data: act.data }
           }))
         }
-      });
+      }, doc?.school_id || profile?.school_id);
     } else {
       // ส่งไปที่กลุ่มไลน์
       const groupMsg = `ถึง: ${teacherName}\nเรื่อง: ${doc.subject}\nเลขที่หนังสือ: ${doc.doc_number}\nคำสั่งการ: ${instruction}`;
@@ -1554,7 +1608,7 @@ async function executeDocAssignment(docId: string, teacherId: string, instructio
             action: act.type === 'uri' ? { type: "uri", label: act.label, uri: act.uri } : { type: "postback", label: act.label, data: act.data }
           }))
         }
-      });
+      }, doc?.school_id || profile?.school_id);
     }
   } catch (err: any) {
     console.error('executeDocAssignment error:', err);
@@ -1648,7 +1702,7 @@ async function handleApproveDoc(event: any, params: URLSearchParams, profile: an
         .maybeSingle();
 
       if (creator?.line_user_id) {
-        await pushToLine(creator.line_user_id, `✅ ยินดีด้วยค่ะ! ผู้อำนวยการได้อนุมัติและลงนามใน${nameString}เรื่อง "${doc.subject}" ของคุณครูเรียบร้อยแล้วนะคะ 🌸`);
+        await pushToLine(creator.line_user_id, `✅ ยินดีด้วยค่ะ! ผู้อำนวยการได้อนุมัติและลงนามใน${nameString}เรื่อง "${doc.subject}" ของคุณครูเรียบร้อยแล้วนะคะ 🌸`, doc?.school_id || profile?.school_id);
       }
     }
   } catch (err: any) {
@@ -1823,7 +1877,7 @@ async function handleAcknowledge(event: any, params: URLSearchParams, profile: a
   try {
     const { data: assignment } = await supabaseAdmin
       .from('doc_assignments')
-      .select('*, incoming_docs(subject)')
+      .select('*, incoming_docs(subject, school_id)')
       .eq('id', assignmentId)
       .single();
 
@@ -1831,6 +1885,8 @@ async function handleAcknowledge(event: any, params: URLSearchParams, profile: a
       await replyToLine(replyToken, '❌ ไม่พบข้อมูลการมอบหมายงานนี้ในระบบค่ะ');
       return;
     }
+
+    const schoolId = assignment.incoming_docs?.school_id || profile?.school_id;
 
     // ตรวจสอบว่าครูผู้กดตรงกับผู้รับงานหรือไม่
     const { data: teacher } = await supabaseAdmin
@@ -1854,17 +1910,21 @@ async function handleAcknowledge(event: any, params: URLSearchParams, profile: a
     await replyToLine(replyToken, `✅ รับทราบงานเรื่อง "${docSubject}" เรียบร้อยแล้วค่ะ ขอให้การทำงานเป็นไปได้ด้วยดีนะคะคุณครู 🌸✨`);
 
     // แจ้งเตือนในกลุ่มไลน์โรงเรียน
-    await pushToLine(undefined, `👍 คุณครู ${profile.display_name} กดรับทราบงานเรื่อง "${docSubject}" เรียบร้อยแล้วค่ะ 🌸`);
+    await pushToLine(undefined, `👍 คุณครู ${profile.display_name} กดรับทราบงานเรื่อง "${docSubject}" เรียบร้อยแล้วค่ะ 🌸`, schoolId);
 
     // แจ้งเตือน ผอ.
     const { data: director } = await supabaseAdmin
       .from('profiles')
       .select('line_user_id')
-      .eq('role', 'director')
-      .maybeSingle();
+      .eq('role', 'director');
+    
+    // กรองด้วย school_id เพื่อให้ได้ ผอ. โรงเรียนตัวเอง
+    let dirQuery = supabaseAdmin.from('profiles').select('line_user_id').eq('role', 'director');
+    if (schoolId) dirQuery = dirQuery.eq('school_id', schoolId);
+    const { data: dirData } = await dirQuery.maybeSingle();
 
-    if (director?.line_user_id) {
-      await pushToLine(director.line_user_id, `👍 คุณครู ${profile.display_name} กดรับทราบงานเรื่อง "${docSubject}" แล้วค่ะ`);
+    if (dirData?.line_user_id) {
+      await pushToLine(dirData.line_user_id, `👍 คุณครู ${profile.display_name} กดรับทราบงานเรื่อง "${docSubject}" แล้วค่ะ`, schoolId);
     }
   } catch (err: any) {
     console.error('handleAcknowledge error:', err);
@@ -2065,7 +2125,7 @@ async function handleClose(event: any, params: URLSearchParams, profile: any, li
   try {
     const { data: assignment } = await supabaseAdmin
       .from('doc_assignments')
-      .select('*, incoming_docs(subject), assignee_id')
+      .select('*, incoming_docs(subject, school_id), assignee_id')
       .eq('id', assignmentId)
       .single();
 
@@ -2073,6 +2133,8 @@ async function handleClose(event: any, params: URLSearchParams, profile: any, li
       await replyToLine(replyToken, '❌ ไม่พบชิ้นงานในระบบค่ะ');
       return;
     }
+
+    const schoolId = assignment.incoming_docs?.school_id || profile?.school_id;
 
     // อัปเดตสถานะเป็น closed และใส่เวลาปิด
     await supabaseAdmin
@@ -2090,7 +2152,7 @@ async function handleClose(event: any, params: URLSearchParams, profile: any, li
       .maybeSingle();
 
     if (teacher?.line_user_id) {
-      await pushToLine(teacher.line_user_id, `🎉 ผู้อำนวยการได้รับทราบผลรายงานและสั่งการ "ทราบ/ปิดงาน" สำหรับงานเรื่อง "${assignment.incoming_docs?.subject}" แล้วค่ะ ขอบคุณในการดำเนินงานและปิดจ๊อบนะคะคุณครู 🌸⚡`);
+      await pushToLine(teacher.line_user_id, `🎉 ผู้อำนวยการได้รับทราบผลรายงานและสั่งการ "ทราบ/ปิดงาน" สำหรับงานเรื่อง "${assignment.incoming_docs?.subject}" แล้วค่ะ ขอบคุณในการดำเนินงานและปิดจ๊อบนะคะคุณครู 🌸⚡`, schoolId);
     }
   } catch (err: any) {
     console.error('handleClose error:', err);
@@ -2179,7 +2241,7 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
       if (doc.created_by) {
         const { data: creator } = await supabaseAdmin.from('profiles').select('line_user_id').eq('id', doc.created_by).maybeSingle();
         if (creator?.line_user_id) {
-          await pushToLine(creator.line_user_id, `❌ แจ้งเตือน: ${nameString}เรื่อง "${doc.subject}" ได้ถูกส่งกลับแก้ไข\nเหตุผลของ ผอ.: "${userMsg}"\n\nรบกวนคุณครูช่วยตรวจสอบและเข้าไปทำการแก้ไขบนหน้าเว็บโรงเรียนนะคะ 🙇‍♀️🌸`);
+          await pushToLine(creator.line_user_id, `❌ แจ้งเตือน: ${nameString}เรื่อง "${doc.subject}" ได้ถูกส่งกลับแก้ไข\nเหตุผลของ ผอ.: "${userMsg}"\n\nรบกวนคุณครูช่วยตรวจสอบและเข้าไปทำการแก้ไขบนหน้าเว็บโรงเรียนนะคะ 🙇‍♀️🌸`, doc.school_id || profile.school_id);
         }
       }
     }
@@ -2196,7 +2258,7 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
       // 1. ค้นหาเอกสารและการมอบหมาย
       const { data: assign } = await supabaseAdmin
         .from('doc_assignments')
-        .select('*, incoming_docs(subject)')
+        .select('*, incoming_docs(subject, school_id)')
         .eq('id', assignment_id)
         .single();
 
@@ -2204,6 +2266,8 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
         await replyToLine(replyToken, '❌ ไม่พบข้อมูลการมอบหมายงานนี้ในระบบค่ะ');
         return;
       }
+
+      const schoolId = assign.incoming_docs?.school_id || profile?.school_id;
 
       // 2. อัปเดตการรายงานผล
       await supabaseAdmin
@@ -2220,12 +2284,10 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
 
       await replyToLine(replyToken, `✅ บันทึกคำรายงานผลและส่งมอบงานเรื่อง "${assign.incoming_docs?.subject}" เสนอผู้อำนวยการเรียบร้อยแล้วค่ะ ขอบคุณมากนะคะคุณครู 🌸`);
 
-      // ค้นหาไลน์ ผอ. เพื่อส่งรายงานไปแจ้งเตือนโต้กลับ
-      const { data: director } = await supabaseAdmin
-        .from('profiles')
-        .select('line_user_id')
-        .eq('role', 'director')
-        .maybeSingle();
+      // ค้นหาไลน์ ผอ. โรงเรียนตนเอง เพื่อส่งรายงานไปแจ้งเตือนโต้กลับ
+      let dirQuery = supabaseAdmin.from('profiles').select('line_user_id').eq('role', 'director');
+      if (schoolId) dirQuery = dirQuery.eq('school_id', schoolId);
+      const { data: director } = await dirQuery.maybeSingle();
 
       const docSubject = assign.incoming_docs?.subject || 'งานที่มอบหมาย';
       const dirMessage = `📊 คุณครู ${profile.display_name} ได้รายงานผลงาน\nเรื่อง: ${docSubject}\n\nผลงาน: "${userMsg}"`;
@@ -2260,7 +2322,8 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
               action: { type: "postback", label: act.label, data: act.data }
             }))
           }
-        }
+        },
+        schoolId
       );
     }
     
@@ -2270,7 +2333,7 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
       // 1. ค้นหาเอกสารและการมอบหมาย
       const { data: assign } = await supabaseAdmin
         .from('doc_assignments')
-        .select('*, incoming_docs(subject), assignee_id')
+        .select('*, incoming_docs(subject, school_id), assignee_id')
         .eq('id', assignment_id)
         .single();
 
@@ -2278,6 +2341,8 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
         await replyToLine(replyToken, '❌ ไม่พบข้อมูลการมอบหมายงานนี้ในระบบค่ะ');
         return;
       }
+
+      const schoolId = assign.incoming_docs?.school_id || profile?.school_id;
 
       // 2. อัปเดต feedback ผอ. และถอยสถานะกลับไปเป็น acknowledged (เพื่อให้ครูแก้ไขและส่งงานได้อีกรอบ)
       await supabaseAdmin
@@ -2333,7 +2398,7 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
               action: act.type === 'uri' ? { type: "uri", label: act.label, uri: act.uri } : { type: "postback", label: act.label, data: act.data }
             }))
           }
-        });
+        }, schoolId);
       } else {
         // ส่งกลุ่ม
         const groupMsg = `ถึง: ${teacherName}\nเรื่อง: ${docSubject}\n\nคำสั่ง ผอ. เพิ่มเติม: "${userMsg}"\n\nกรุณาดำเนินการต่อและกดส่งงานใหม่เมื่อเรียบร้อยค่ะ`;
@@ -2359,7 +2424,7 @@ async function handlePendingAction(event: any, pendingState: any, profile: any, 
               action: act.type === 'uri' ? { type: "uri", label: act.label, uri: act.uri } : { type: "postback", label: act.label, data: act.data }
             }))
           }
-        });
+        }, schoolId);
       }
     }
   } catch (err: any) {
