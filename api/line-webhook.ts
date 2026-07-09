@@ -592,7 +592,29 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
         if (schoolId) {
           teachersQuery = teachersQuery.eq('school_id', schoolId);
         }
-        const { data: teachers } = await teachersQuery;
+        let { data: teachers } = await teachersQuery;
+        
+        // Fallback: หากยังไม่เคยมีการซิงค์ข้อมูลลงตาราง teachers ให้ใช้ข้อมูลจาก profiles แทน
+        if (!teachers || teachers.length === 0) {
+          let profilesQuery = supabase.from('profiles').select('id, display_name, email, role, status');
+          if (schoolId) {
+            profilesQuery = profilesQuery.eq('school_id', schoolId);
+          }
+          const { data: profiles } = await profilesQuery;
+          if (profiles && profiles.length > 0) {
+            teachers = profiles.map((p: any) => ({
+              id: p.id,
+              prefix: '',
+              first_name: p.display_name || p.email.split('@')[0],
+              last_name: '',
+              position: p.role === 'admin' ? 'ผู้ดูแลระบบ' : p.role === 'director' ? 'ผู้อำนวยการ' : 'ครู',
+              department: 'ทั่วไป',
+              phone: '',
+              email: p.email,
+              status: p.status
+            }));
+          }
+        }
         const { data: duties } = await supabase.from('teacher_duties').select('duty_day, duty_type, teacher_id, teachers(prefix, first_name, last_name)');
         return `รายชื่อครูและบุคลากร: ${JSON.stringify(teachers)}\nตารางเวรประจำวันครู (เชื่อมโยงรายชื่อครูแล้ว): ${JSON.stringify(duties)}`;
       }
