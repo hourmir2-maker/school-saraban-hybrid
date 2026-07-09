@@ -159,8 +159,21 @@ export default async function handler(req: any, res: any) {
         console.log(`[LINE WEBHOOK] Text Message User Profile search result: ${profile ? `Found: ${profile.display_name} (Role: ${profile.role}, School: ${profile.school_id})` : 'Not Found'}`);
 
         if (profile) {
-          // ตรวจสอบว่ามี pending action state (สถานะการทำรายการค้าง) หรือไม่
-          const { data: pendingState } = await supabaseAdmin
+          console.log(`[LINE WEBHOOK] Searching pending states for userId="${userId}"`);
+          // ดึงแบบดิบๆ เพื่อเช็คดูว่ามีอยู่ใน DB หรือไม่ และเกิด Error หรือไม่
+          const { data: rawStates, error: rawStatesErr } = await supabaseAdmin
+            .from('line_action_states')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+            
+          console.log(`[LINE WEBHOOK] Raw states check: count=${rawStates?.length || 0}, error=${rawStatesErr ? JSON.stringify(rawStatesErr) : 'none'}`);
+          if (rawStates && rawStates.length > 0) {
+            console.log(`[LINE WEBHOOK] Top raw state details: ID=${rawStates[0].id}, Action=${rawStates[0].action}, CreatedAt=${rawStates[0].created_at}, ExpiresAt=${rawStates[0].expires_at}`);
+          }
+
+          // คิวรีแบบกรองหมดอายุ
+          const { data: pendingState, error: pendingErr } = await supabaseAdmin
             .from('line_action_states')
             .select('*')
             .eq('user_id', userId)
@@ -168,6 +181,11 @@ export default async function handler(req: any, res: any) {
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
+
+          if (pendingErr) {
+            console.error('[LINE WEBHOOK] Error querying pendingState:', pendingErr);
+          }
+          console.log(`[LINE WEBHOOK] Filtered pendingState result: ${pendingState ? `Found! ID=${pendingState.id}, Action=${pendingState.action}` : 'Not Found'}`);
 
           if (pendingState) {
             await handlePendingAction(event, pendingState, profile, userMsg, lineToken);
