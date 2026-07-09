@@ -622,16 +622,28 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
     {
       keys: ['เขตพื้นที่บริการ', 'พื้นที่บริการ', 'ทร.14', 'ทร14', 'พฐ.03', 'พฐ03', 'เด็กเข้าเกณฑ์', 'เด็กในเขต'],
       fetch: async () => {
-        const { data } = await supabase.from('service_area_students').select('prefix, first_name, last_name, gender, birth_date, moo, sub_district').limit(60);
+        let sasQuery = supabase.from('service_area_students').select('prefix, first_name, last_name, gender, birth_date, moo, sub_district');
+        if (schoolId) sasQuery = sasQuery.eq('school_id', schoolId);
+        const { data } = await sasQuery.limit(60);
         return `ข้อมูลทะเบียนเด็กในเขตพื้นที่บริการ (ทร.14 / พฐ.03): ${JSON.stringify(data)}`;
       }
     },
     {
       keys: ['โครงการ', 'งบประมาณ', 'งบ', 'เงินงบ', 'สถิติ', 'สรุป', 'ผลสัมฤทธิ์', 'จัดซื้อจัดจ้าง', 'พัสดุ', 'ซื้อจ้าง'],
       fetch: async () => {
-        const { data: projects } = await supabase.from('school_projects').select('project_name, planned_amount, spent_amount, status, budget_allocations(budget_type, category_name)').eq('academic_year', currentYear);
-        const { data: budget } = await supabase.from('budget_allocations').select('id, budget_type, category_name, amount, spent_amount, remaining_amount').eq('academic_year', currentYear);
-        const { data: procurement } = await supabase.from('procurement_projects').select('project_name, total_amount, status, procurement_type').eq('academic_year', currentYear);
+        let projQuery = supabase.from('school_projects').select('project_name, planned_amount, spent_amount, status, budget_allocations(budget_type, category_name)').eq('academic_year', currentYear);
+        let budgQuery = supabase.from('budget_allocations').select('id, budget_type, category_name, amount, spent_amount, remaining_amount').eq('academic_year', currentYear);
+        let procQuery = supabase.from('procurement_projects').select('project_name, total_amount, status, procurement_type').eq('academic_year', currentYear);
+        
+        if (schoolId) {
+          projQuery = projQuery.eq('school_id', schoolId);
+          budgQuery = budgQuery.eq('school_id', schoolId);
+          procQuery = procQuery.eq('school_id', schoolId);
+        }
+        
+        const { data: projects } = await projQuery;
+        const { data: budget } = await budgQuery;
+        const { data: procurement } = await procQuery;
         
         // คำนวณสรุปตัวเลขสถิติเพื่อให้ AI ทำข้อมูลผลสัมฤทธิ์
         const totalAllocated = budget?.reduce((sum: number, b: any) => sum + (b.amount || 0), 0) || 0;
@@ -719,6 +731,7 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       keys: ['ค่าไฟ', 'ไฟฟ้า', 'ค่าน้ำ', 'ประปา', 'โทรศัพท์', 'เน็ต', 'อินเทอร์เน็ต', 'สาธารณูปโภค', 'บิล'],
       fetch: async () => {
         let query = supabase.from('utilities').select('*').eq('academic_year', currentYear);
+        if (schoolId) query = query.eq('school_id', schoolId);
         const types: string[] = [];
         if (msg.includes('ค่าไฟ') || msg.includes('ไฟฟ้า')) types.push('electricity');
         if (msg.includes('ค่าน้ำ') || msg.includes('ประปา')) types.push('water');
@@ -735,29 +748,43 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
     {
       keys: ['เช็คชื่อ', 'ขาด', 'ลา', 'มาสาย', 'เข้าเรียน', 'เช็คขาด', 'เช็คมาสาย', 'สถิติ'],
       fetch: async () => {
-        const { data } = await supabase.from('attendance').select('date, class_level, summary, recorded_at').order('date', { ascending: false }).limit(5);
+        let attQuery = supabase.from('attendance').select('date, class_level, summary, recorded_at');
+        if (schoolId) attQuery = attQuery.eq('school_id', schoolId);
+        const { data } = await attQuery.order('date', { ascending: false }).limit(5);
         return `ข้อมูลการเช็คชื่อเข้าเรียนล่าสุด: ${JSON.stringify(data)}`;
       }
     },
     {
       keys: ['พัสดุ', 'จัดซื้อ', 'จัดจ้าง', 'การจ้าง', 'สัญญา', 'ผู้ขาย', 'ผู้รับจ้าง', 'ตรวจรับ', 'กรรมการ'],
       fetch: async () => {
-        const { data: projects } = await supabase.from('procurement_projects').select('project_name, academic_year, method, procurement_type, total_amount, status, ref_doc_number, contract_number, committee_json, vendor_info, school_projects(project_name)').eq('academic_year', currentYear).limit(10);
+        let procQuery2 = supabase.from('procurement_projects').select('project_name, academic_year, method, procurement_type, total_amount, status, ref_doc_number, contract_number, committee_json, vendor_info, school_projects(project_name)').eq('academic_year', currentYear);
+        if (schoolId) procQuery2 = procQuery2.eq('school_id', schoolId);
+        const { data: projects } = await procQuery2.limit(10);
         return `ข้อมูลโครงการจัดซื้อจัดจ้าง ปี ${currentYear} (เชื่อมโยงโครงการหลักตามแผนแล้ว): ${JSON.stringify(projects)}`;
       }
     },
     {
       keys: ['ห้องสมุด', 'ยืมหนังสือ', 'คืนหนังสือ', 'ยืม-คืน', 'หนังสือห้องสมุด'],
       fetch: async () => {
-        const { data: books } = await supabase.from('library_books').select('id, book_id, title, category, author, available_qty, status').limit(15);
-        const { data: borrow } = await supabase.from('library_borrow').select('borrow_date, borrower_name, return_date, status, library_books(book_id, title, category)').order('borrow_date', { ascending: false }).limit(10);
+        let booksQuery = supabase.from('library_books').select('id, book_id, title, category, author, available_qty, status');
+        let borrowQuery = supabase.from('library_borrow').select('borrow_date, borrower_name, return_date, status, library_books(book_id, title, category)');
+        
+        if (schoolId) {
+          booksQuery = booksQuery.eq('school_id', schoolId);
+          borrowQuery = borrowQuery.eq('school_id', schoolId);
+        }
+        
+        const { data: books } = await booksQuery.limit(15);
+        const { data: borrow } = await borrowQuery.order('borrow_date', { ascending: false }).limit(10);
         return `ข้อมูลหนังสือในห้องสมุด: ${JSON.stringify(books)}\nประวัติการยืมคืนหนังสือ (เชื่อมโยงรายละเอียดหนังสือแล้ว): ${JSON.stringify(borrow)}`;
       }
     },
     {
       keys: ['มอบหมาย', 'งานมอบหมาย', 'ติดตามงาน', 'สั่งงาน', 'มอบหมายงาน'],
       fetch: async () => {
-        const { data } = await supabase.from('doc_assignments').select('instruction, status, reported_at, staff_report, incoming_docs(doc_number, subject), teachers(prefix, first_name, last_name)').limit(15);
+        let daQuery = supabase.from('doc_assignments').select('instruction, status, reported_at, staff_report, incoming_docs(doc_number, subject, school_id), teachers(prefix, first_name, last_name)');
+        if (schoolId) daQuery = daQuery.eq('incoming_docs.school_id', schoolId);
+        const { data } = await daQuery.limit(15);
         return `ข้อมูลการมอบหมายหนังสือราชการให้คุณครูผู้รับผิดชอบเชิงลึก: ${JSON.stringify(data)}`;
       }
     },
@@ -788,6 +815,7 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
             .select('prefix, first_name, last_name, class_level, room, gender')
             .eq('academic_year', currentYear)
             .in('graduation_status', ['ปกติ', 'กำลังศึกษา']);
+          if (schoolId) query = query.eq('school_id', schoolId);
             
           if (prefix === 'ป') {
             query = query.or(`class_level.eq.${targetClass},class_level.ilike.ป%${levelNum}%,class_level.ilike.%ประถม%${levelNum}%`);
@@ -811,11 +839,13 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
           return `ไม่พบข้อมูลรายชื่อนักเรียนชั้น ${targetClass} สำหรับปีการศึกษา ${currentYear} ค่ะ`;
         } else {
           // ดึงสถิตินักเรียนทั้งหมดและสรุป
-          const { data: allStudents } = await supabase
+          let studQuery1 = supabase
             .from('students')
             .select('class_level, gender, religion')
             .eq('academic_year', currentYear)
             .in('graduation_status', ['ปกติ', 'กำลังศึกษา']);
+          if (schoolId) studQuery1 = studQuery1.eq('school_id', schoolId);
+          const { data: allStudents } = await studQuery1;
           
           if (allStudents && allStudents.length > 0) {
             const counts: Record<string, number> = {};
@@ -852,7 +882,9 @@ ${religionStr}
 ข้อมูลรายละเอียดดิบสำหรับคุณวิเคราะห์: ${JSON.stringify(allStudents)}`;
           }
           
-          const { count } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('academic_year', currentYear).in('graduation_status', ['ปกติ', 'กำลังศึกษา']);
+          let studQuery2 = supabase.from('students').select('*', { count: 'exact', head: true }).eq('academic_year', currentYear).in('graduation_status', ['ปกติ', 'กำลังศึกษา']);
+          if (schoolId) studQuery2 = studQuery2.eq('school_id', schoolId);
+          const { count } = await studQuery2;
           return `จำนวนนักเรียนปัจจุบันทั้งหมดในปีการศึกษา ${currentYear}: ${count} คน`;
         }
       }
@@ -860,9 +892,11 @@ ${religionStr}
     {
       keys: ['แผนการสอน', 'ส่งแผน', 'แผนสอน', 'ตรวจแผน'],
       fetch: async () => {
-        const { data, error } = await supabase
+        let lpQuery = supabase
           .from('lesson_plans')
-          .select('title, subject_code, subject_name, class_level, term, status, academic_comments, director_comments, created_at, profiles(display_name)');
+          .select('title, subject_code, subject_name, class_level, term, status, academic_comments, director_comments, created_at, profiles(display_name, school_id)');
+        if (schoolId) lpQuery = lpQuery.eq('profiles.school_id', schoolId);
+        const { data, error } = await lpQuery;
         
         if (error) {
           console.error('[LINE WEBHOOK] Error fetching lesson plans:', error);
@@ -903,11 +937,12 @@ ${religionStr}
 
   // Fallback: ค้นหาใน school_knowledge
   try {
-    const { data: knowledge } = await supabase
+    let skQuery = supabase
       .from('school_knowledge')
       .select('document_name, chunk_text')
-      .or(`chunk_text.ilike.%${msg}%,document_name.ilike.%${msg}%`)
-      .limit(3);
+      .or(`chunk_text.ilike.%${msg}%,document_name.ilike.%${msg}%`);
+    if (schoolId) skQuery = skQuery.eq('school_id', schoolId);
+    const { data: knowledge } = await skQuery.limit(3);
     
     if (knowledge && knowledge.length > 0) {
       console.log(`[LINE WEBHOOK] Found ${knowledge.length} matches in school_knowledge`);
