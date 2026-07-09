@@ -132,6 +132,7 @@ export default async function handler(req: any, res: any) {
     _requestLineToken = lineToken;
 
     for (const event of events) {
+      if (event.type === 'message' && event.message.type === 'text') {
         const userId = event.source.userId;
         const groupId = event.source.groupId;
         const userMsg = event.message.text.trim();
