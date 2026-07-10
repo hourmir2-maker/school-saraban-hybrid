@@ -59,7 +59,7 @@ export default async function handler(req: any, res: any) {
     // --- 2. ค้นหา token ของบอท Telegram จากตาราง schools ---
     const { data: school, error: schoolErr } = await supabase
       .from('schools')
-      .select('telegram_bot_token')
+      .select('name, telegram_bot_token')
       .eq('id', schoolId)
       .single();
 
@@ -159,7 +159,7 @@ export default async function handler(req: any, res: any) {
     // ตรวจสอบว่าแชทไอดีนี้ผูกบัญชีไว้กับโรงเรียนนี้แล้วหรือยัง
     const { data: profileLinked, error: linkErr } = await supabase
       .from('profiles')
-      .select('id, display_name')
+      .select('id, display_name, role')
       .eq('telegram_chat_id', String(chatId))
       .eq('school_id', schoolId)
       .maybeSingle();
@@ -171,11 +171,31 @@ export default async function handler(req: any, res: any) {
         '🔗 <b>แชทนี้ยังไม่ได้เชื่อมต่อระบบสารบรรณ</b>\n\nกรุณาเข้าสู่ระบบสารบรรณโรงเรียนบนเว็บไซต์หรือคอมพิวเตอร์ จากนั้นไปที่หน้า "โปรไฟล์ส่วนตัว" และกดปุ่ม <b>"ผูกบัญชี Telegram"</b> เพื่อเปิดระบบแจ้งเตือนค่ะ'
       );
     } else {
-      await sendTelegramMessage(
-        botToken,
-        chatId,
-        `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`
-      );
+      const lowerText = rawText.toLowerCase();
+      
+      if (lowerText.includes('โรงเรียน') || lowerText.includes('ชื่อโรงเรียน') || lowerText.includes('ที่ไหน') || lowerText.includes('school')) {
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          `🏫 บอทสารบรรณนี้ผูกอยู่กับ <b>${school.name || 'โรงเรียนหลัก'}</b> ค่ะคุณครู <b>${profileLinked.display_name}</b>`
+        );
+      } else if (lowerText.includes('ใคร') || lowerText.includes('ชื่ออะไร') || lowerText.includes('ข้อมูลฉัน') || lowerText.includes('profile') || lowerText.includes('สิทธิ์')) {
+        let roleName = 'คุณครูทั่วไป';
+        if (profileLinked.role === 'admin') roleName = 'ผู้ดูแลระบบ (Admin)';
+        else if (profileLinked.role === 'director') roleName = 'ผู้อำนวยการ (Director)';
+        
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          `👤 <b>ข้อมูลผู้ใช้งานในระบบ:</b>\n\n• <b>ชื่อแสดง</b>: ${profileLinked.display_name}\n• <b>บทบาท</b>: ${roleName}\n• <b>สังกัด</b>: ${school.name || 'โรงเรียนหลัก'}`
+        );
+      } else {
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`
+        );
+      }
     }
 
     return res.status(200).json({ ok: true });
