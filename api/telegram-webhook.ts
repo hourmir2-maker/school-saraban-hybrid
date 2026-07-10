@@ -93,6 +93,17 @@ export default async function handler(req: any, res: any) {
     const chatId = message.chat.id;
     const rawText = message.text.trim();
 
+    // ดักรับคำสั่งหา Chat ID / Group ID ทันทีเพื่อความสะดวกของคุณครู
+    const lowerText = rawText.toLowerCase();
+    if (lowerText.startsWith('/id') || lowerText.startsWith('/groupid')) {
+      await sendTelegramMessage(
+        botToken,
+        chatId,
+        `🆔 <b>รหัสแชทนี้ (Chat ID):</b> <code>${chatId}</code>\n\n*(คุณครูสามารถคัดลอกเลขตัวนี้ไปกรอกในระบบได้เลยค่ะ)*`
+      );
+      return res.status(200).json({ ok: true });
+    }
+
     // --- 4. ดำเนินการผูกบัญชีด้วย Deep Linking (/start auth_<base64_email>) ---
     if (rawText.startsWith('/start ')) {
       const authToken = rawText.replace('/start ', '').trim();
