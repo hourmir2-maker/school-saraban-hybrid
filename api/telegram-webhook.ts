@@ -59,7 +59,7 @@ export default async function handler(req: any, res: any) {
     // --- 2. ค้นหา token ของบอท Telegram จากตาราง schools ---
     const { data: school, error: schoolErr } = await supabase
       .from('schools')
-      .select('name, telegram_bot_token')
+      .select('school_name, telegram_bot_token')
       .eq('id', schoolId)
       .single();
 
@@ -191,7 +191,7 @@ export default async function handler(req: any, res: any) {
         await sendTelegramMessage(
           botToken,
           chatId,
-          `🏫 บอทสารบรรณนี้ผูกอยู่กับ <b>${school.name || 'โรงเรียนหลัก'}</b> ค่ะคุณครู <b>${profileLinked.display_name}</b>`
+          `🏫 บอทสารบรรณนี้ผูกอยู่กับ <b>${school.school_name || 'โรงเรียนหลัก'}</b> ค่ะคุณครู <b>${profileLinked.display_name}</b>`
         );
       } else if (lowerText.includes('ใคร') || lowerText.includes('ชื่ออะไร') || lowerText.includes('ข้อมูลฉัน') || lowerText.includes('profile') || lowerText.includes('สิทธิ์')) {
         let roleName = 'คุณครูทั่วไป';
@@ -201,7 +201,7 @@ export default async function handler(req: any, res: any) {
         await sendTelegramMessage(
           botToken,
           chatId,
-          `👤 <b>ข้อมูลผู้ใช้งานในระบบ:</b>\n\n• <b>ชื่อแสดง</b>: ${profileLinked.display_name}\n• <b>บทบาท</b>: ${roleName}\n• <b>สังกัด</b>: ${school.name || 'โรงเรียนหลัก'}`
+          `👤 <b>ข้อมูลผู้ใช้งานในระบบ:</b>\n\n• <b>ชื่อแสดง</b>: ${profileLinked.display_name}\n• <b>บทบาท</b>: ${roleName}\n• <b>สังกัด</b>: ${school.school_name || 'โรงเรียนหลัก'}`
         );
       } else {
         await sendTelegramMessage(
