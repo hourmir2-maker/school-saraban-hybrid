@@ -264,17 +264,36 @@ export default async function handler(req: any, res: any) {
             .select('*', { count: 'exact', head: true })
             .eq('school_id', schoolId);
 
+          // สอบถามข้อมูลความรู้โรงเรียน (RAG) จากตาราง school_knowledge (AI Cowork)
+          let contextText = '';
+          try {
+            let skQuery = supabase
+              .from('school_knowledge')
+              .select('document_name, chunk_text')
+              .or(`chunk_text.ilike.%${rawText}%,document_name.ilike.%${rawText}%`);
+            if (schoolId) skQuery = skQuery.eq('school_id', schoolId);
+            const { data: knowledge } = await skQuery.limit(3);
+            
+            if (knowledge && knowledge.length > 0) {
+              contextText = "\n\nข้อมูลอ้างอิงจากคลังความรู้โรงเรียน (AI Cowork):\n" + 
+                knowledge.map((k: any) => `[ไฟล์: ${k.document_name}] ${k.chunk_text}`).join('\n');
+            }
+          } catch (ragErr) {
+            console.error('[TELEGRAM WEBHOOK RAG ERROR]', ragErr);
+          }
+
           const systemPrompt = `คุณคือ "น้องชบา AI" ผู้ช่วยอัจฉริยะระบบงานธุรการและสารบรรณของ ${school.school_name || 'โรงเรียน'}
 บทบาทหน้าที่ของคุณ:
 1. ทำการโต้ตอบกับคุณครูอย่างชาญฉลาดและเป็นมิตร มีบุคลิกสุภาพเรียบร้อย มีหางเสียง "ค่ะ/นะคะ"
 2. คล้ายกับบอท J.A.R.V.I.S. ในไอรอนแมน (ผู้ช่วยสมองกลอัจฉริยะ)
 3. ตอบคำถามเกี่ยวกับการใช้งานระบบสารบรรณและธุรการโรงเรียน เช่น อนุมัติเอกสาร เกษียณเอกสาร ดูรายงาน โดยอิงข้อมูลจากชื่อผู้ใช้
 4. สามารถคุยทั่วไปหรือช่วยตอบคำถามความรู้ทางวิชาการและงานธุรการได้ดีเยี่ยม
+5. หากมี "ข้อมูลอ้างอิงจากคลังความรู้โรงเรียน (AI Cowork)" ด้านล่าง ให้ใช้ข้อมูลนั้นเพื่อตอบคำถามคุณครูอย่างถูกต้องแม่นยำ และอย่าลืมระบุชื่อไฟล์อ้างอิงด้วยนะคะ
 
 ข้อมูลคุณครูผู้คุยกับคุณ:
 - ชื่อคุณครู: ${profileLinked.display_name}
 - บทบาทหน้าที่: ${profileLinked.role === 'director' ? 'ผู้อำนวยการโรงเรียน' : profileLinked.role === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'คุณครูผู้ปฏิบัติงาน'}
-- จำนวนบุคลากรทั้งหมดในระบบของโรงเรียนในขณะนี้: ${staffCount || 0} คน`;
+- จำนวนบุคลากรทั้งหมดในระบบของโรงเรียนในขณะนี้: ${staffCount || 0} คน${contextText}`;
 
           const aiReply = await callGemini(systemPrompt, rawText, apiKey);
           if (aiReply) {
