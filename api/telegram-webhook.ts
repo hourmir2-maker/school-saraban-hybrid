@@ -619,7 +619,7 @@ async function executeDocAssignment(
       const teacherReplyMarkup = {
         inline_keyboard: [
           [
-            { text: '📢 ประชาสัมพันธ์ลงกลุ่มกลาง', callback_data: `action=broadcast_group&assign_id=${assignment.id}` }
+            { text: '📢 ประชาสัมพันธ์ลงกลุ่มกลาง', callback_data: `action=bc_grp&id=${assignment.id}` }
           ]
         ]
       };
@@ -896,8 +896,8 @@ export default async function handler(req: any, res: any) {
           await supabase.from('line_action_states').delete().eq('id', activeState.id);
           await executeDocAssignment(docId, teacherId, instruction, botToken, callbackChatId, profileLinked, supabase);
         }
-      } else if (action === 'broadcast_group') {
-        const assignId = params.get('assign_id');
+      } else if (action === 'bc_grp') {
+        const assignId = params.get('id');
         const { data: assign } = await supabase
           .from('doc_assignments')
           .select('*, incoming_docs(subject, doc_number, file_url), teachers(prefix, first_name, last_name)')
