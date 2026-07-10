@@ -526,6 +526,34 @@ export default function IncomingDocs() {
         carouselItems
       );
 
+      // ส่งแจ้งเตือน Telegram สำหรับการเสนอหลายฉบับพร้อมกัน (จัดรวมเป็นข้อความเดียวแบบมีปุ่มสั่งการแยก)
+      let telegramNotifyStatus = '';
+      try {
+        let telegramMsg = `📥 <b>เสนอหนังสือรอเกษียณเข้าใหม่ (${docsToPropose.length} ฉบับ)</b>\n\n`;
+        const inlineKeyboard: any[] = [];
+        
+        docsToPropose.forEach((doc, idx) => {
+          telegramMsg += `${idx + 1}. <b>เรื่อง</b>: ${doc.subject}\n• <b>จาก</b>: ${doc.from_agency || '-'}\n• <b>เลขที่รับ</b>: ${doc.doc_number}\n\n`;
+          // callback_data มีขนาด 48 bytes ปลอดภัยไม่เกิน 64 bytes
+          inlineKeyboard.push([
+            {
+              text: `✍️ เกษียณสั่งการ ฉบับที่ ${idx + 1} (${doc.doc_number})`,
+              callback_data: `action=start_assign&id=${doc.id}`
+            }
+          ]);
+        });
+        
+        const telegramReplyMarkup = {
+          inline_keyboard: inlineKeyboard
+        };
+        
+        await sendTelegramNotification(telegramMsg, 'proposal', telegramReplyMarkup);
+        telegramNotifyStatus = ' และ Telegram ✅';
+      } catch (tgErr: any) {
+        console.error('[TELEGRAM BULK NOTIFY ERROR]', tgErr);
+        telegramNotifyStatus = ` (Telegram ล้มเหลว: ${tgErr.message})`;
+      }
+
       const { error } = await supabase
         .from('incoming_docs')
         .update({ status: 'pending' })
@@ -533,7 +561,7 @@ export default function IncomingDocs() {
 
       if (error) throw error;
 
-      alert(`เสนอหนังสือจำนวน ${selectedHoldingIds.length} ฉบับไปยัง LINE ผอ. เรียบร้อยแล้ว`);
+      alert(`เสนอหนังสือจำนวน ${selectedHoldingIds.length} ฉบับไปยังผู้บริหารเรียบร้อยแล้ว${telegramNotifyStatus}`);
       setSelectedHoldingIds([]);
       fetchDocs();
     } catch (err: any) {
