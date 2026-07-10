@@ -87,6 +87,7 @@ function extractDocSearchWord(message: string): string {
   else {
     keyword = msg;
     const commonWords = [
+      'ใครรับผิดชอบ', 'ผู้รับผิดชอบ', 'รับผิดชอบ', 'มอบหมายให้ใคร', 'มอบหมายงาน', 'มอบหมาย', 'ส่งให้ใคร', 'ให้ใคร', 'ของใคร', 'ใคร', 'คนไหน', 'ท่านใด', 'ทำหน้าที่',
       'ขอไฟล์แนบ', 'ขอเอกสารแนบ', 'ขอลิงก์', 'ขอลิงค์', 'ขอไฟล์', 'ดาวน์โหลด', 'ขอดู',
       'หนังสือรับที่', 'หนังสือส่งที่', 'คำสั่งที่', 'บันทึกที่', 'จดหมายที่', 'ฉบับที่', 'เรื่องที่',
       'หนังสือรับ', 'หนังสือส่ง', 'หนังสือเข้า', 'หนังสือออก', 'บันทึกข้อความ',
@@ -162,11 +163,11 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       keys: ['หนังสือรับ', 'จดหมาย', 'เอกสารรับ', 'หนังสือเข้า', 'ไฟล์แนบ', 'เอกสารแนบ', 'แนบ', 'ไฟล์รับ'],
       fetch: async () => {
         const searchWord = extractDocSearchWord(message);
-        let query = supabase.from('incoming_docs').select('doc_number, subject, from_agency, doc_date, urgency, remark, file_url, attachment_urls');
+        let query = supabase.from('incoming_docs').select('doc_number, subject, from_agency, doc_date, urgency, remark, file_url, attachment_urls, doc_assignments(instruction, status, teachers(prefix, first_name, last_name))');
         if (schoolId) query = query.eq('school_id', schoolId);
         if (searchWord.length > 0) query = query.or(`subject.ilike.%${searchWord}%,doc_number.ilike.%${searchWord}%`);
         const { data } = await query.order('doc_date', { ascending: false }).limit(5);
-        return `ข้อมูลหนังสือรับล่าสุด: ${JSON.stringify(data)}`;
+        return `ข้อมูลหนังสือรับล่าสุด (รวมข้อมูลการมอบหมายงานด้วย): ${JSON.stringify(data)}`;
       }
     },
     {
@@ -541,9 +542,16 @@ export default async function handler(req: any, res: any) {
 - ตอบเฉพาะ "คำตอบสุดท้ายที่จะส่งให้ครู" โดยใส่ไว้ในแท็ก <ans>...</ans> เท่านั้น
 - ห้ามพิมพ์ขั้นตอนการคิด (Thinking), ห้ามทวนคำถาม, ห้ามเกริ่นนำใดๆ นอกแท็ก <ans>
 - ห้ามจินตนาการ ห้ามสร้าง คาดเดา หรือสมมติข้อมูลใดๆ เช่น ชื่อคน ชื่อโครงการ วันที่ หรือตัวเลขขึ้นมาเองโดยเด็ดขาด หากข้อมูลไม่อยู่ใน "ข้อมูลฐานข้อมูลโรงเรียน" ที่ส่งมา ให้ตอบอย่างสุภาพว่าไม่พบข้อมูลดังกล่าวในระบบ
+- ให้ใช้รูปแบบ HTML สำหรับ Telegram ในการจัดรูปแบบข้อความเท่านั้น **ห้ามใช้รูปแบบ Markdown (เช่น ห้ามใช้ ** หรือ [ข้อความ](ลิงก์) เด็ดขาด)**:
+  * ใช้ <b>ข้อความตัวหนา</b> สำหรับตัวหนา (เช่น <b>เรื่อง:</b> หรือ <b>รายละเอียด:</b>)
+  * ใช้ <i>ข้อความตัวเอียง</i> สำหรับตัวเอียง
+  * ใช้ <code>รหัส</code> สำหรับข้อความโค้ดหรือ ID
+- การจัดรูปแบบลิงก์ (สำคัญมาก):
+  * ห้ามแสดงลิงก์ URL ยาวๆ แบบดิบ และห้ามใช้วงเล็บลิงก์แบบ Markdown [ลิงก์](URL) เด็ดขาด
+  * ให้แปลงเป็นลิงก์ HTML สวยงามโดยใช้แท็ก <a href="URL">ข้อความอ้างอิงสวยงามเป็นภาษาไทย</a> เสมอ เช่น <a href="file_url">🔗 ดาวน์โหลดหนังสือนำส่งหลัก</a> หรือ <a href="attachment_url">📎 เปิดเอกสารแนบ</a>
 - การแยกแยะไฟล์ของหนังสือรับ (incoming_docs):
   * "หนังสือนำส่งหลัก" ใช้ลิงก์จาก file_url
-  * "ไฟล์แนบ" ใช้ลิงก์จาก attachment_urls
+  * "ไฟล์แนบ" หรือ "สิ่งที่ส่งมาด้วย" ใช้ลิงก์จาก attachment_urls
 - ห้ามใช้สัญลักษณ์ดอกจันเดี่ยว (*) ในการทำ Bullet point ให้ใช้ "•" หรือ "-" แทน
 - ใช้ Emoji ให้ดูเป็นมิตร เว้นบรรทัดให้อ่านง่าย
 - ห้ามใช้ Markdown Table ให้ใช้ Bullet points แทน
