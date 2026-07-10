@@ -272,7 +272,41 @@ export default function Settings() {
         // โหลด Client Supabase ใหม่
         import('../lib/supabase').then(m => m.initSupabase());
 
-      alert('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+      // จดทะเบียน Telegram Webhook อัตโนมัติ (หากกรอก Token ครบถ้วน)
+      let telegramWebhookNotice = "";
+      if (settings.telegram_bot_token && settings.telegram_bot_username) {
+        try {
+          const schoolId = activeProfile.id;
+          let vercelBaseUrl = activeProfile?.vercelUrl || window.location.origin;
+          
+          if (vercelBaseUrl && !vercelBaseUrl.includes('localhost') && !vercelBaseUrl.includes('127.0.0.1')) {
+            if (!vercelBaseUrl.startsWith('http://') && !vercelBaseUrl.startsWith('https://')) {
+              vercelBaseUrl = `https://${vercelBaseUrl}`;
+            }
+            if (vercelBaseUrl.endsWith('/')) {
+              vercelBaseUrl = vercelBaseUrl.slice(0, -1);
+            }
+            
+            const webhookUrl = `${vercelBaseUrl}/api/telegram-webhook?school_id=${schoolId}`;
+            const registerUrl = `https://api.telegram.org/bot${settings.telegram_bot_token}/setWebhook?url=${encodeURIComponent(webhookUrl)}`;
+            
+            const res = await fetch(registerUrl);
+            const resData = await res.json();
+            if (resData.ok) {
+              telegramWebhookNotice = "\n\n🤖 ระบบได้ทำการจดทะเบียน Webhook กับ Telegram บอทให้เรียบร้อยแล้วค่ะ!";
+            } else {
+              telegramWebhookNotice = `\n\n⚠️ คำเตือน: จดทะเบียน Webhook ไม่สำเร็จ (${resData.description || 'ไม่สามารถติดต่อ Telegram ได้'})`;
+            }
+          } else {
+            telegramWebhookNotice = "\n\nℹ️ หมายเหตุ: ไม่สามารถผูก Webhook อัตโนมัติในโหมดพัฒนา (Localhost) ได้ ระบบข้ามการผูกความปลอดภัยบอทไปก่อนค่ะ";
+          }
+        } catch (webhookErr: any) {
+          console.error('Error auto-registering Telegram webhook:', webhookErr);
+          telegramWebhookNotice = `\n\n⚠️ คำเตือน: ระบบขัดข้องขณะผูก Webhook (${webhookErr.message})`;
+        }
+      }
+
+      alert('บันทึกการตั้งค่าเรียบร้อยแล้ว' + telegramWebhookNotice);
       fetchSettings();
     } catch (err: any) {
       console.error(err);
