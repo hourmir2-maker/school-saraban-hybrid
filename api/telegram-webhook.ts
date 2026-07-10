@@ -1,5 +1,9 @@
 declare const process: any;
 import { createClient } from '@supabase/supabase-js';
+import { PDFDocument, rgb } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import fs from 'fs';
+import path from 'path';
 
 // ============================================================
 // Telegram Bot Webhook API
@@ -8,7 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 // ============================================================
 
 /** ส่งข้อความกลับหาผู้ใช้ทาง Telegram Bot API */
-async function sendTelegramMessage(botToken: string, chatId: number, text: string) {
+async function sendTelegramMessage(botToken: string, chatId: number, text: string, replyMarkup?: any) {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   const resp = await fetch(url, {
     method: 'POST',
@@ -16,7 +20,8 @@ async function sendTelegramMessage(botToken: string, chatId: number, text: strin
     body: JSON.stringify({
       chat_id: chatId,
       text: text,
-      parse_mode: 'HTML'
+      parse_mode: 'HTML',
+      reply_markup: replyMarkup
     }),
   });
   if (!resp.ok) {
@@ -342,6 +347,286 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
   return "";
 }
 
+function wrapThaiText(text: string, maxWidth: number, font: any, fontSize: number) {
+  if (!text) return [];
+  const segments = text.split(/(\s+)/);
+  const lines = [];
+  let currentLine = '';
+
+  for (const segment of segments) {
+    const testLine = currentLine + segment;
+    const lineWidth = font.widthOfTextAtSize(testLine, fontSize);
+    if (lineWidth > maxWidth && currentLine !== '') {
+      lines.push(currentLine);
+      currentLine = segment;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+async function applyStampsOnServer(
+  pdfBuffer: ArrayBuffer,
+  directorData: {
+    order: string;
+    signer: string;
+    date: string;
+    position?: string;
+    signatureUrl?: string;
+    pageNumber?: number;
+  }
+) {
+  try {
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    pdfDoc.registerFontkit(fontkit);
+
+    let fontBytes: ArrayBuffer;
+    try {
+      const fontB64Path = path.join(process.cwd(), 'font.b64');
+      const localFontPath = path.join(process.cwd(), 'public', 'fonts', 'THSarabunNew.ttf');
+      const localDistFontPath = path.join(process.cwd(), 'dist', 'fonts', 'THSarabunNew.ttf');
+      const rootFontPath = path.join(process.cwd(), 'THSarabunNew.ttf');
+
+      if (fs.existsSync(localFontPath)) {
+        const buffer = fs.readFileSync(localFontPath);
+        fontBytes = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      } else if (fs.existsSync(localDistFontPath)) {
+        const buffer = fs.readFileSync(localDistFontPath);
+        fontBytes = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      } else if (fs.existsSync(fontB64Path)) {
+        const b64Str = fs.readFileSync(fontB64Path, 'utf-8');
+        const buf = Buffer.from(b64Str.trim(), 'base64');
+        fontBytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      } else if (fs.existsSync(rootFontPath)) {
+        const buffer = fs.readFileSync(rootFontPath);
+        fontBytes = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      } else {
+        const res = await fetch('https://school-admin-psi.vercel.app/fonts/THSarabunNew.ttf');
+        if (!res.ok) throw new Error(`Failed to fetch remote font: status ${res.status}`);
+        fontBytes = await res.arrayBuffer();
+      }
+    } catch (err) {
+      console.error('Error loading local/preferred font, falling back to remote network fetch:', err);
+      const res = await fetch('https://school-admin-psi.vercel.app/fonts/THSarabunNew.ttf');
+      if (!res.ok) throw new Error(`Remote network backup fetch failed: status ${res.status}`);
+      fontBytes = await res.arrayBuffer();
+    }
+
+    const customFont = await pdfDoc.embedFont(fontBytes);
+    const pages = pdfDoc.getPages();
+    const pageCount = pages.length;
+
+    const requestedPage = directorData.pageNumber || 1;
+    const pageIndex = Math.min(Math.max(requestedPage - 1, 0), pageCount - 1);
+    const targetPage = pages[pageIndex];
+
+    const { width } = targetPage.getSize();
+    const stampColor = rgb(0.1, 0.2, 0.7);
+    const fontSize = 15;
+    const receiptBoxWidth = 140;
+    const rightMargin = 30;
+    const startX = width - receiptBoxWidth - rightMargin;
+    const effectiveWidth = receiptBoxWidth;
+    const dirY = 140;
+
+    targetPage.drawText(`คำสั่ง / การปฏิบัติ`, {
+      x: startX,
+      y: dirY + 115,
+      size: fontSize + 1,
+      font: customFont,
+      color: stampColor,
+    });
+
+    const orderLines = wrapThaiText(directorData.order, effectiveWidth, customFont, fontSize);
+    let dCurrentY = dirY + 98;
+    for (const line of orderLines) {
+      targetPage.drawText(line, { x: startX, y: dCurrentY, size: fontSize, font: customFont, color: stampColor });
+      dCurrentY -= 18;
+    }
+
+    const dirSignerY = dCurrentY - 35;
+
+    if (directorData.signatureUrl) {
+      try {
+        const sigRes = await fetch(directorData.signatureUrl);
+        if (sigRes.ok) {
+          const sigBytes = await sigRes.arrayBuffer();
+          const isPng = directorData.signatureUrl.toLowerCase().includes('.png') || directorData.signatureUrl.toLowerCase().includes('image/png');
+          const sigImage = isPng ? await pdfDoc.embedPng(sigBytes) : await pdfDoc.embedJpg(sigBytes);
+          const sigDims = sigImage.scale(0.50);
+          targetPage.drawImage(sigImage, {
+            x: startX + 60,
+            y: dirSignerY + 10,
+            width: sigDims.width,
+            height: sigDims.height,
+          });
+        }
+      } catch (imgErr) { console.error('Server PDF Signature image embed error:', imgErr); }
+    }
+
+    targetPage.drawText(`(ลงชื่อ) ........................................`, { x: startX - 10, y: dirSignerY, size: fontSize, font: customFont, color: stampColor });
+    targetPage.drawText(`(${directorData.signer})`, { x: startX + 15, y: dirSignerY - 17, size: fontSize, font: customFont, color: stampColor });
+
+    if (directorData.position) {
+      targetPage.drawText(`${directorData.position}`, { x: startX - 5, y: dirSignerY - 34, size: fontSize, font: customFont, color: stampColor });
+    }
+
+    const dateObj = new Date(directorData.date);
+    const thDay = dateObj.getDate();
+    const thMonthAbbr = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."][dateObj.getMonth()];
+    const thYear = dateObj.getFullYear() + 543;
+    const thDateStr = `${thDay}/${thMonthAbbr}/${thYear}`;
+
+    const thNumerals = ['๐', '๑', '๒', '๓', '๔', '๕', '๖', '๗', '๘', '๙'];
+    const thaiFormattedDate = thDateStr.replace(/[0-9]/g, (digit) => thNumerals[parseInt(digit)]);
+
+    targetPage.drawText(`วันที่: ${thaiFormattedDate}`, {
+      x: startX + 20,
+      y: dirSignerY - (directorData.position ? 51 : 34),
+      size: fontSize,
+      font: customFont,
+      color: stampColor,
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    return pdfBytes;
+  } catch (err: any) {
+    console.error('applyStampsOnServer error:', err);
+    throw err;
+  }
+}
+
+async function executeDocAssignment(
+  docId: string,
+  teacherId: string,
+  instruction: string,
+  botToken: string,
+  chatId: number,
+  profile: any,
+  supabase: any
+) {
+  try {
+    const { data: doc } = await supabase
+      .from('incoming_docs')
+      .select('*')
+      .eq('id', docId)
+      .single();
+
+    if (!doc) {
+      await sendTelegramMessage(botToken, chatId, '❌ ไม่พบข้อมูลหนังสือรับชิ้นนี้ในระบบค่ะ');
+      return;
+    }
+
+    const { data: teacher } = await supabase
+      .from('teachers')
+      .select('*')
+      .eq('id', teacherId)
+      .single();
+
+    if (!teacher) {
+      await sendTelegramMessage(botToken, chatId, '❌ ไม่พบข้อมูลคุณครูในระบบค่ะ');
+      return;
+    }
+
+    let proposalStampPage = 1;
+    if (doc.remark) {
+      try {
+        const extra = typeof doc.remark === 'object' ? doc.remark : JSON.parse(doc.remark);
+        if (extra && extra.stamp_page) proposalStampPage = parseInt(extra.stamp_page) || 1;
+      } catch (e) {}
+    }
+
+    const schoolId = doc?.school_id || profile?.school_id;
+    let settingsQuery = supabase.from('settings').select('school_name, director_name, director_signature_url');
+    if (schoolId) settingsQuery = settingsQuery.eq('school_id', schoolId);
+    const { data: settings } = await settingsQuery.limit(1).maybeSingle();
+
+    const schoolLabel = settings?.school_name 
+      ? (settings.school_name.startsWith('โรงเรียน') ? settings.school_name : `โรงเรียน${settings.school_name}`)
+      : '';
+    const directorPosition = schoolLabel ? `ผู้อำนวยการ${schoolLabel}` : 'ผู้อำนวยการโรงเรียน';
+
+    let finalFileUrl = doc.file_url;
+    if (doc.file_url && doc.file_url.includes('supabase.co') && doc.file_url.toLowerCase().includes('.pdf')) {
+      try {
+        const fileRes = await fetch(doc.file_url);
+        if (fileRes.ok) {
+          const pdfBuffer = await fileRes.arrayBuffer();
+          const stampedBytes = await applyStampsOnServer(pdfBuffer, {
+            order: instruction,
+            signer: settings?.director_name || profile.display_name || 'ผู้อำนวยการโรงเรียน',
+            position: directorPosition,
+            date: new Date().toISOString().split('T')[0],
+            signatureUrl: settings?.director_signature_url || profile.signature_url,
+            pageNumber: proposalStampPage
+          });
+
+          const pathSegments = doc.file_url.split('/');
+          const fileName = pathSegments[pathSegments.length - 1].split('?')[0];
+
+          await supabase.storage.from('temp_docs').upload(fileName, stampedBytes, { contentType: 'application/pdf', upsert: true });
+
+          const { data: publicData } = supabase.storage.from('temp_docs').getPublicUrl(fileName);
+          if (publicData?.publicUrl) finalFileUrl = `${publicData.publicUrl}?t=${Date.now()}`;
+
+          const gasUrl = process.env.VITE_GAS_URL || 'https://script.google.com/macros/s/AKfycbw52uo8upPX6SiZ_W4dD9MUrocA3DkZm3XnE-eU4uE3vvOtOAK4VhXcLIf71PGVsvxj/exec';
+          const base64 = Buffer.from(stampedBytes).toString('base64');
+          const sanitizedSubject = doc.subject.replace(/[\/\\?%*:|"<>]/g, '-').slice(0, 50);
+          const finalFileName = `${doc.doc_number}_เรื่อง_${sanitizedSubject}.pdf`;
+
+          try {
+            const driveRes = await fetch(gasUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folder: 'incoming', filename: finalFileName, mimeType: 'application/pdf', base64: base64 })
+            });
+
+            if (driveRes.ok) {
+              const driveResult = await driveRes.json() as any;
+              if (driveResult.status === 'success' && driveResult.url) {
+                finalFileUrl = driveResult.url;
+                try {
+                  await supabase.storage.from('temp_docs').remove([fileName]);
+                } catch (e) {}
+              }
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+
+    await supabase.from('incoming_docs').update({ status: 'assigned', file_url: finalFileUrl }).eq('id', docId);
+
+    const { data: insertedAssigns, error: assignErr } = await supabase
+      .from('doc_assignments')
+      .insert([{ doc_id: docId, assignee_id: teacherId, instruction: instruction, status: 'pending' }])
+      .select();
+
+    if (assignErr) throw assignErr;
+    const assignment = insertedAssigns?.[0];
+
+    await supabase.from('line_action_states').delete().eq('user_id', `telegram:${profile.id}`);
+
+    const teacherName = `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}`;
+    await sendTelegramMessage(botToken, chatId, `✅ ทำการเกษียณสั่งการหนังสือเรื่อง "${doc.subject}" และมอบหมายงานให้คุณครู <b>${teacherName}</b> เรียบร้อยแล้วค่ะ 🌸`);
+
+    const personalMsg = `📌 <b>มีงานมอบหมายใหม่ถึงคุณ</b>\n\n• <b>เรื่อง</b>: ${doc.subject}\n• <b>เลขที่หนังสือ</b>: ${doc.doc_number}\n• <b>คำสั่งการ</b>: ${instruction}\n\n📄 <a href="${finalFileUrl}">เปิดดูต้นฉบับเอกสารสั่งการ</a>`;
+    const { data: teacherProfile } = await supabase.from('profiles').select('telegram_chat_id').eq('email', teacher.email).maybeSingle();
+
+    if (teacherProfile?.telegram_chat_id) {
+      await sendTelegramMessage(botToken, parseInt(teacherProfile.telegram_chat_id), personalMsg);
+    } else {
+      await sendTelegramMessage(botToken, chatId, `📢 <b>แจ้งมอบหมายงานใหม่</b>\n\n• <b>ถึงคุณครู</b>: ${teacherName}\n• <b>เรื่อง</b>: ${doc.subject}\n• <b>คำสั่งการ</b>: ${instruction}\n\n📄 <a href="${finalFileUrl}">เปิดดูเอกสารสั่งการ</a>`);
+    }
+
+  } catch (err: any) {
+    console.error('executeDocAssignment error:', err);
+    await sendTelegramMessage(botToken, chatId, `❌ ดำเนินการไม่สำเร็จ: ${err.message}`);
+  }
+}
+
 /** สร้าง Supabase client โดยใช้ Service Role Key เพื่อก้าวข้ามสิทธิ์ RLS */
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -413,13 +698,155 @@ export default async function handler(req: any, res: any) {
     const message = update?.message;
     const callbackQuery = update?.callback_query;
 
-    // จัดการ callback_query (ถ้ามี) เพื่อหลีกเลี่ยง loading ค้างบนปุ่มบอท
+    // จัดการ callback_query (ปุ่มกดแบบ Inline Keyboard)
     if (callbackQuery) {
+      // 1. ตอบรับ callback query ทันทีป้องกันหน้าจอปุ่มค้างหมุน
       await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callback_query_id: callbackQuery.id }),
       });
+
+      const callbackData = callbackQuery.data;
+      const callbackChatId = callbackQuery.message?.chat?.id;
+      const userTelegramId = callbackQuery.from?.id;
+
+      if (!callbackData || !callbackChatId || !userTelegramId) {
+        return res.status(200).json({ ok: true });
+      }
+
+      // 2. ดึงข้อมูล Profile ของผู้กดปุ่มเพื่อตรวจสอบสิทธิ์
+      const { data: profileLinked, error: linkErr } = await supabase
+        .from('profiles')
+        .select('id, display_name, role, signature_url')
+        .eq('telegram_chat_id', String(userTelegramId))
+        .eq('school_id', schoolId)
+        .maybeSingle();
+
+      if (linkErr || !profileLinked) {
+        await sendTelegramMessage(botToken, callbackChatId, '❌ ขออภัยค่ะ ชบาหาบัญชีที่ผูกกับ Telegram ของคุณครูไม่พบค่ะ กรุณาผูกบัญชีของท่านในระบบก่อนใช้งานฟังก์ชันนี้หน้าตู้ควบคุมนะคะ 🌸');
+        return res.status(200).json({ ok: true });
+      }
+
+      // 3. แยก params วิเคราะห์ action
+      const params = new URLSearchParams(callbackData);
+      const action = params.get('action');
+
+      if (action === 'start_assign') {
+        const docId = params.get('id');
+        if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
+          await sendTelegramMessage(botToken, callbackChatId, '❌ ขออภัยค่ะ ปุ่มนี้สำหรับผู้อำนวยการ/ผู้รักษาการดำเนินการเกษียณสั่งการเท่านั้นนะคะ 🌸');
+          return res.status(200).json({ ok: true });
+        }
+
+        const { data: doc } = await supabase
+          .from('incoming_docs')
+          .select('subject')
+          .eq('id', docId)
+          .single();
+
+        if (!doc) {
+          await sendTelegramMessage(botToken, callbackChatId, '❌ ไม่พบข้อมูลหนังสือรับชิ้นนี้ในระบบค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        // ดึงรายชื่อคุณครู active ทั้งหมด
+        const { data: teachers } = await supabase
+          .from('teachers')
+          .select('*')
+          .eq('status', 'active')
+          .order('first_name');
+
+        if (!teachers || teachers.length === 0) {
+          await sendTelegramMessage(botToken, callbackChatId, '❌ ไม่พบรายชื่อคุณครูในระบบสำหรับมอบหมายงานค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        // สร้าง Inline Keyboard ปุ่มรายชื่อครู (2 คอลัมน์)
+        const inlineKeyboard: any[] = [];
+        for (let i = 0; i < teachers.length; i += 2) {
+          const row: any[] = [];
+          const t1 = teachers[i];
+          const t2 = teachers[i + 1];
+          
+          row.push({
+            text: `🧑‍🏫 ${t1.prefix || ''}${t1.first_name} ${t1.last_name.substring(0, 3)}.`,
+            callback_data: `action=assign&doc_id=${docId}&teacher_id=${t1.id}`
+          });
+          
+          if (t2) {
+            row.push({
+              text: `🧑‍🏫 ${t2.prefix || ''}${t2.first_name} ${t2.last_name.substring(0, 3)}.`,
+              callback_data: `action=assign&doc_id=${docId}&teacher_id=${t2.id}`
+            });
+          }
+          inlineKeyboard.push(row);
+        }
+
+        await sendTelegramMessage(
+          botToken,
+          callbackChatId,
+          `🧑‍🏫 กรุณาเลือกคุณครูผู้รับมอบงานสำหรับเอกสารเรื่อง <b>"${doc.subject}"</b> ด้านล่างนี้ค่ะ:`,
+          { inline_keyboard: inlineKeyboard }
+        );
+
+      } else if (action === 'assign') {
+        const docId = params.get('doc_id');
+        const teacherId = params.get('teacher_id');
+
+        if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
+          await sendTelegramMessage(botToken, callbackChatId, '❌ ไม่มีสิทธิ์ดำเนินการค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        const options = ['มอบดำเนินการ', 'ทราบ/ถือปฏิบัติ', 'ประสานงานต่อ', 'พิมพ์ระบุคำสั่งเอง'];
+        const inlineKeyboard = options.map(opt => {
+          if (opt === 'พิมพ์ระบุคำสั่งเอง') {
+            return [{
+              text: opt,
+              callback_data: `action=confirm_assign&doc_id=${docId}&teacher_id=${teacherId}&instruction=manual`
+            }];
+          } else {
+            return [{
+              text: `สั่งการ: ${opt}`,
+              callback_data: `action=confirm_assign&doc_id=${docId}&teacher_id=${teacherId}&instruction=${opt}`
+            }];
+          }
+        });
+
+        await sendTelegramMessage(
+          botToken,
+          callbackChatId,
+          '✍️ เลือกคำสั่งการเกษียณสั่งการหนังสือ หรือเลือกพิมพ์แบบเจาะจงเองด้านล่างค่ะ:',
+          { inline_keyboard: inlineKeyboard }
+        );
+
+      } else if (action === 'confirm_assign') {
+        const docId = params.get('doc_id') || '';
+        const teacherId = params.get('teacher_id') || '';
+        const instruction = params.get('instruction') || 'มอบดำเนินการ';
+
+        if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
+          await sendTelegramMessage(botToken, callbackChatId, '❌ ไม่มีสิทธิ์ดำเนินการค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        if (instruction === 'manual') {
+          const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+          await supabase
+            .from('line_action_states')
+            .insert([{
+              user_id: `telegram:${userTelegramId}`,
+              action: 'awaiting_assign_instruction',
+              context: { doc_id: docId, teacher_id: teacherId },
+              expires_at: expiresAt
+            }]);
+          await sendTelegramMessage(botToken, callbackChatId, '💬 กรุณาพิมพ์ข้อความคำสั่งการของคุณครูส่งเข้ามาในแชทนี้ได้เลยค่ะ 🌸');
+        } else {
+          await executeDocAssignment(docId, teacherId, instruction, botToken, callbackChatId, profileLinked, supabase);
+        }
+      }
+
       return res.status(200).json({ ok: true });
     }
 
@@ -430,6 +857,7 @@ export default async function handler(req: any, res: any) {
 
     const chatId = message.chat.id;
     const rawText = message.text.trim();
+    const userTelegramId = message.from?.id;
 
     // ดักรับคำสั่งหา Chat ID / Group ID ทันทีเพื่อความสะดวกของคุณครู
     const lowerText = rawText.toLowerCase();
@@ -509,7 +937,7 @@ export default async function handler(req: any, res: any) {
     const { data: profileLinked, error: linkErr } = await supabase
       .from('profiles')
       .select('id, display_name, role')
-      .eq('telegram_chat_id', String(chatId))
+      .eq('telegram_chat_id', String(userTelegramId))
       .eq('school_id', schoolId)
       .maybeSingle();
 
@@ -519,22 +947,55 @@ export default async function handler(req: any, res: any) {
         chatId,
         '🔗 <b>แชทนี้ยังไม่ได้เชื่อมต่อระบบสารบรรณ</b>\n\nกรุณาเข้าสู่ระบบสารบรรณโรงเรียนบนเว็บไซต์หรือคอมพิวเตอร์ จากนั้นไปที่หน้า "โปรไฟล์ส่วนตัว" และกดปุ่ม <b>"ผูกบัญชี Telegram"</b> เพื่อเปิดระบบแจ้งเตือนค่ะ'
       );
-    } else {
-      // --- Jarvis Mode V2 (เทียบเท่า LINE Bot + กฎเหล็กห้ามสร้างข้อมูล) ---
-      try {
-        // 1. Smart Data Fetch — ดึงข้อมูลจริงจากฐานข้อมูลตามหมวดคำถาม
-        const contextData = await smartFetchContext(rawText, currentYear, supabase, schoolId);
-        console.log(`[TELEGRAM WEBHOOK] Context Data size: ${contextData.length} chars`);
+      return res.status(200).json({ ok: true });
+    }
 
-        // 2. นับจำนวนบุคลากร
-        const { count: staffCount } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('school_id', schoolId);
+    // ตรวจสอบสถานะการพิมพ์ข้อความสั่งการ/รายงานผล (Stateful Conversation)
+    const { data: activeState } = await supabase
+      .from('line_action_states')
+      .select('*')
+      .eq('user_id', `telegram:${userTelegramId}`)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-        if (apiKey) {
-          // --- โหมด AI อัจฉริยะ (Jarvis Mode V2 with Strict Rules) ---
-          const systemPrompt = `คุณคือ "น้องชบา AI" ผู้ช่วยอัจฉริยะระบบงานธุรการและสารบรรณของ ${school.school_name || 'โรงเรียน'} (ห้ามใช้คำว่า AI Cowork หรือ AI เด็ดขาด)
+    if (activeState) {
+      if (activeState.action === 'awaiting_assign_instruction') {
+        const { doc_id, teacher_id } = activeState.context || {};
+        await supabase.from('line_action_states').delete().eq('id', activeState.id);
+        await executeDocAssignment(doc_id, teacher_id, rawText, botToken, chatId, profileLinked, supabase);
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // จัดการข้อความสนทนาทั่วไป
+    const isGroup = chatId < 0;
+    const botMention = `@${school.telegram_bot_token?.split(':')[0] || 'ChabaSchoolBot'}`;
+    const isMentioned = !isGroup || rawText.includes(botMention) || rawText.includes('ชบา') || rawText.includes('น้องชบา');
+
+    if (isGroup && !isMentioned) {
+      // อยู่ในกลุ่มแต่ไม่ได้กล่าวถึงบอท ไม่ตอบเพื่อประหยัดโควตาและลดความรำคาญ
+      return res.status(200).json({ ok: true });
+    }
+
+    // จัดการข้อความ (ล้าง mention ออกเพื่อให้ AI ตอบได้ดีขึ้น)
+    const cleanedText = rawText.replace(new RegExp(botMention, 'g'), '').trim();
+
+    try {
+      // 1. Smart Data Fetch — ดึงข้อมูลจริงจากฐานข้อมูลตามหมวดคำถาม
+      const contextData = await smartFetchContext(cleanedText, currentYear, supabase, schoolId);
+      console.log(`[TELEGRAM WEBHOOK] Context Data size: ${contextData.length} chars`);
+
+      // 2. นับจำนวนบุคลากร
+      const { count: staffCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('school_id', schoolId);
+
+      if (apiKey) {
+        // --- โหมด AI อัจฉริยะ (Jarvis Mode V2 with Strict Rules) ---
+        const systemPrompt = `คุณคือ "น้องชบา AI" ผู้ช่วยอัจฉริยะระบบงานธุรการและสารบรรณของ ${school.school_name || 'โรงเรียน'} (ห้ามใช้คำว่า AI Cowork หรือ AI เด็ดขาด)
 ลักษณะนิสัย: สุภาพ อ่อนน้อม ใช้ "ค่ะ/นะคะ" แทนตัวว่า "ชบา" หรือ "หนู" (ห้ามใช้หางเสียง "ครับ" หรือคำพูดเชิงผู้ชายเด็ดขาด)
 คล้ายกับบอท J.A.R.V.I.S. ในไอรอนแมน (ผู้ช่วยสมองกลอัจฉริยะ)
 
@@ -561,9 +1022,9 @@ export default async function handler(req: any, res: any) {
 - บทบาท: ${profileLinked.role === 'director' ? 'ผู้อำนวยการโรงเรียน' : profileLinked.role === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'คุณครูผู้ปฏิบัติงาน'}
 - จำนวนบุคลากรในระบบ: ${staffCount || 0} คน`;
 
-          const userPrompt = `ข้อมูลฐานข้อมูลโรงเรียน: ${contextData || 'ไม่พบข้อมูลที่เกี่ยวข้องในฐานข้อมูล'}\nปีการศึกษา: ${currentYear}\nคำถามของคุณครู: "${rawText}"\nกรุณาตอบในแท็ก <ans> ให้ชบาหน่อยนะคะ`;
+        const userPrompt = `ข้อมูลฐานข้อมูลโรงเรียน: ${contextData || 'ไม่พบข้อมูลที่เกี่ยวข้องในฐานข้อมูล'}\nปีการศึกษา: ${currentYear}\nคำถามของคุณครู: "${cleanedText}"\nกรุณาตอบในแท็ก <ans> ให้ชบาหน่อยนะคะ`;
 
-          const rawResponse = await callGemini(systemPrompt, userPrompt, apiKey);
+        const rawResponse = await callGemini(systemPrompt, userPrompt, apiKey);
 
           if (rawResponse) {
             // 3. Answer Extraction — สกัดคำตอบจากแท็ก <ans>...</ans>
@@ -615,7 +1076,6 @@ export default async function handler(req: any, res: any) {
         console.error('[GEMINI TELEGRAM BOT ERROR]', aiErr);
         await sendTelegramMessage(botToken, chatId, `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`);
       }
-    }
 
     return res.status(200).json({ ok: true });
   } catch (err: any) {

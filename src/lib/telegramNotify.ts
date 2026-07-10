@@ -34,7 +34,7 @@ function getVercelBaseUrl(): string {
  * @param message ข้อความแจ้งเตือน (รองรับรูปแบบ HTML)
  * @param specificToId รหัสผู้รับปลายทาง (ถ้าละไว้ จะดึง telegram_group_id จากหน้าตั้งค่าโรงเรียนโดยอัตโนมัติ)
  */
-export async function sendTelegramNotification(message: string, specificToId?: string) {
+export async function sendTelegramNotification(message: string, specificToId?: string, replyMarkup?: any) {
   try {
     const activeSchoolId = localStorage.getItem('active_school_id');
     if (!activeSchoolId) return;
@@ -61,7 +61,8 @@ export async function sendTelegramNotification(message: string, specificToId?: s
       body: JSON.stringify({
         school_id: activeSchoolId,
         chat_id: targetId,
-        message: message
+        message: message,
+        reply_markup: replyMarkup
       })
     });
 

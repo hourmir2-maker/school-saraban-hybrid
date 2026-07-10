@@ -471,7 +471,16 @@ export default function IncomingDocs() {
       if (!isHolding) {
         try {
           const telegramMsg = `📥 <b>เสนอหนังสือรอเกษียณเข้าใหม่</b>\n\n• <b>เรื่อง</b>: ${formData.subject}\n• <b>จาก</b>: ${formData.from_agency}\n• <b>เลขที่รับ</b>: ${finalDocNum}\n\n📄 <a href="${file_url}">เปิดดูต้นฉบับหนังสือ</a>`;
-          await sendTelegramNotification(telegramMsg);
+          
+          const telegramReplyMarkup = {
+            inline_keyboard: [
+              [
+                { text: '✍️ เกษียณสั่งการ (Telegram)', callback_data: `action=start_assign&id=${insertedDoc?.id || ''}` }
+              ]
+            ]
+          };
+          
+          await sendTelegramNotification(telegramMsg, undefined, telegramReplyMarkup);
           telegramNotifyStatus = ' และส่งแจ้งเตือน Telegram สำเร็จ ✅';
         } catch (tgErr: any) {
           console.error('[TELEGRAM NOTIFY ERROR]', tgErr);

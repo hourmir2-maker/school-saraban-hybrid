@@ -29,7 +29,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { school_id, chat_id, message } = req.body;
+  const { school_id, chat_id, message, reply_markup } = req.body;
 
   // ตรวจสอบข้อมูลนำเข้าให้ครบถ้วน
   if (!school_id || !chat_id || !message) {
@@ -62,6 +62,7 @@ export default async function handler(req: any, res: any) {
         chat_id: chat_id,
         text: message.substring(0, 4096), // Telegram จำกัดข้อความ 4096 อักขระ
         parse_mode: 'HTML',
+        reply_markup: reply_markup
       }),
     });
 
