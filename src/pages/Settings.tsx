@@ -292,7 +292,14 @@ export default function Settings() {
       if (settings.telegram_bot_token && settings.telegram_bot_username) {
         try {
           const schoolId = activeProfile.id;
-          let vercelBaseUrl = activeProfile?.vercelUrl || window.location.origin;
+          const isWebUrl = typeof window !== 'undefined' && 
+                            window.location && 
+                            window.location.origin && 
+                            window.location.protocol.startsWith('http') &&
+                            !window.location.origin.includes('localhost') && 
+                            !window.location.origin.includes('127.0.0.1');
+
+          let vercelBaseUrl = isWebUrl ? window.location.origin : (activeProfile?.vercelUrl || window.location.origin);
           
           if (vercelBaseUrl && !vercelBaseUrl.includes('localhost') && !vercelBaseUrl.includes('127.0.0.1')) {
             if (!vercelBaseUrl.startsWith('http://') && !vercelBaseUrl.startsWith('https://')) {
