@@ -757,6 +757,15 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ ok: true });
         }
 
+        // ล้างสถานะเก่าของผู้ใช้นี้ออกก่อน จากนั้นเก็บ doc_id ลงใน Action State
+        await supabase.from('line_action_states').delete().eq('user_id', `telegram:${userTelegramId}`);
+        await supabase.from('line_action_states').insert([{
+          user_id: `telegram:${userTelegramId}`,
+          action: 'tg_assign_flow',
+          context: { doc_id: docId },
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+        }]);
+
         // ดึงรายชื่อคุณครู active ทั้งหมด
         const { data: teachers } = await supabase
           .from('teachers')
@@ -769,7 +778,7 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ ok: true });
         }
 
-        // สร้าง Inline Keyboard ปุ่มรายชื่อครู (2 คอลัมน์)
+        // สร้าง Inline Keyboard ปุ่มรายชื่อครู (2 คอลัมน์) โดยส่งค่าเพียงครู ID (เลี่ยงข้อจำกัด 64 bytes)
         const inlineKeyboard: any[] = [];
         for (let i = 0; i < teachers.length; i += 2) {
           const row: any[] = [];
@@ -778,13 +787,13 @@ export default async function handler(req: any, res: any) {
           
           row.push({
             text: `🧑‍🏫 ${t1.prefix || ''}${t1.first_name} ${t1.last_name.substring(0, 3)}.`,
-            callback_data: `action=assign&doc_id=${docId}&teacher_id=${t1.id}`
+            callback_data: `action=assign&t_id=${t1.id}`
           });
           
           if (t2) {
             row.push({
               text: `🧑‍🏫 ${t2.prefix || ''}${t2.first_name} ${t2.last_name.substring(0, 3)}.`,
-              callback_data: `action=assign&doc_id=${docId}&teacher_id=${t2.id}`
+              callback_data: `action=assign&t_id=${t2.id}`
             });
           }
           inlineKeyboard.push(row);
@@ -798,28 +807,43 @@ export default async function handler(req: any, res: any) {
         );
 
       } else if (action === 'assign') {
-        const docId = params.get('doc_id');
-        const teacherId = params.get('teacher_id');
+        const teacherId = params.get('t_id') || '';
 
         if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
           await sendTelegramMessage(botToken, callbackChatId, '❌ ไม่มีสิทธิ์ดำเนินการค่ะ');
           return res.status(200).json({ ok: true });
         }
 
-        const options = ['มอบดำเนินการ', 'ทราบ/ถือปฏิบัติ', 'ประสานงานต่อ', 'พิมพ์ระบุคำสั่งเอง'];
-        const inlineKeyboard = options.map(opt => {
-          if (opt === 'พิมพ์ระบุคำสั่งเอง') {
-            return [{
-              text: opt,
-              callback_data: `action=confirm_assign&doc_id=${docId}&teacher_id=${teacherId}&instruction=manual`
-            }];
-          } else {
-            return [{
-              text: `สั่งการ: ${opt}`,
-              callback_data: `action=confirm_assign&doc_id=${docId}&teacher_id=${teacherId}&instruction=${opt}`
-            }];
-          }
-        });
+        // ค้นหา State ล่าสุดเพื่อดึง doc_id
+        const { data: activeState } = await supabase
+          .from('line_action_states')
+          .select('*')
+          .eq('user_id', `telegram:${userTelegramId}`)
+          .eq('action', 'tg_assign_flow')
+          .maybeSingle();
+
+        if (!activeState || !activeState.context?.doc_id) {
+          await sendTelegramMessage(botToken, callbackChatId, '❌ เซสชันการเกษียณสั่งการหมดอายุแล้วค่ะ กรุณากดปุ่มสั่งการใหม่อีกครั้งนะคะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        const docId = activeState.context.doc_id;
+
+        // อัปเดตเพิ่ม teacher_id เข้าไปใน State
+        await supabase
+          .from('line_action_states')
+          .update({
+            context: { doc_id: docId, teacher_id: teacherId }
+          })
+          .eq('id', activeState.id);
+
+        // แสดงตัวเลือกคำสั่งด่วน (ใช้ shortcodes ป้องกันความยาวปุ่มเกิน 64 bytes)
+        const inlineKeyboard = [
+          [{ text: 'สั่งการ: มอบดำเนินการ', callback_data: 'action=confirm_assign&ins=1' }],
+          [{ text: 'สั่งการ: ทราบ/ถือปฏิบัติ', callback_data: 'action=confirm_assign&ins=2' }],
+          [{ text: 'สั่งการ: ประสานงานต่อ', callback_data: 'action=confirm_assign&ins=3' }],
+          [{ text: '✍️ พิมพ์ระบุคำสั่งเอง', callback_data: 'action=confirm_assign&ins=manual' }]
+        ];
 
         await sendTelegramMessage(
           botToken,
@@ -829,27 +853,47 @@ export default async function handler(req: any, res: any) {
         );
 
       } else if (action === 'confirm_assign') {
-        const docId = params.get('doc_id') || '';
-        const teacherId = params.get('teacher_id') || '';
-        const instruction = params.get('instruction') || 'มอบดำเนินการ';
+        const insCode = params.get('ins') || '1';
 
         if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
           await sendTelegramMessage(botToken, callbackChatId, '❌ ไม่มีสิทธิ์ดำเนินการค่ะ');
           return res.status(200).json({ ok: true });
         }
 
-        if (instruction === 'manual') {
-          const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        // ดึง State ล่าสุด
+        const { data: activeState } = await supabase
+          .from('line_action_states')
+          .select('*')
+          .eq('user_id', `telegram:${userTelegramId}`)
+          .eq('action', 'tg_assign_flow')
+          .maybeSingle();
+
+        if (!activeState || !activeState.context?.doc_id || !activeState.context?.teacher_id) {
+          await sendTelegramMessage(botToken, callbackChatId, '❌ เซสชันการเกษียณสั่งการหมดอายุแล้วค่ะ กรุณากดปุ่มสั่งการใหม่อีกครั้งนะคะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        const docId = activeState.context.doc_id;
+        const teacherId = activeState.context.teacher_id;
+
+        if (insCode === 'manual') {
+          // เปลี่ยนสถานะเป็นรอพิมพ์คำสั่ง
           await supabase
             .from('line_action_states')
-            .insert([{
-              user_id: `telegram:${userTelegramId}`,
+            .update({
               action: 'awaiting_assign_instruction',
-              context: { doc_id: docId, teacher_id: teacherId },
-              expires_at: expiresAt
-            }]);
+              expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+            })
+            .eq('id', activeState.id);
           await sendTelegramMessage(botToken, callbackChatId, '💬 กรุณาพิมพ์ข้อความคำสั่งการของคุณครูส่งเข้ามาในแชทนี้ได้เลยค่ะ 🌸');
         } else {
+          // แปลง shortcode กลับเป็นคำสั่งการจริง
+          let instruction = 'มอบดำเนินการ';
+          if (insCode === '2') instruction = 'ทราบ/ถือปฏิบัติ';
+          else if (insCode === '3') instruction = 'ประสานงานต่อ';
+
+          // ลบ State ออกก่อนรันงานหลัก
+          await supabase.from('line_action_states').delete().eq('id', activeState.id);
           await executeDocAssignment(docId, teacherId, instruction, botToken, callbackChatId, profileLinked, supabase);
         }
       } else if (action === 'broadcast_group') {
