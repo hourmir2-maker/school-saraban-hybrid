@@ -65,7 +65,10 @@ export default async function handler(req: any, res: any) {
 
     if (schoolErr || !school?.telegram_bot_token) {
       console.error('[TELEGRAM WEBHOOK ERROR] School or Token not found:', schoolErr);
-      return res.status(400).json({ message: 'Invalid school_id or missing telegram_bot_token' });
+      return res.status(400).json({ 
+        message: 'Invalid school_id or missing telegram_bot_token', 
+        error: schoolErr ? schoolErr.message : 'Missing telegram_bot_token' 
+      });
     }
 
     const botToken = school.telegram_bot_token;
