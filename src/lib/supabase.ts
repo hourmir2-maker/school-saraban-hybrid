@@ -99,6 +99,10 @@ export function checkAndCreateDefaultProfile() {
   }
 }
 
+let lastUrl = '';
+let lastKey = '';
+let lastSchoolId = '';
+
 export function initSupabase() {
   const profile = getActiveSchoolProfile();
   
@@ -111,6 +115,15 @@ export function initSupabase() {
   const url = profileUrl || import.meta.env.VITE_SUPABASE_URL || '';
   const key = profileKey || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
   const schoolId = localStorage.getItem('active_school_id') || 'school_default';
+  
+  // หากค่าตั้งค่าเดิมไม่เปลี่ยน ไม่ต้องสร้างอินสแตนซ์ซ้ำเพื่อหลีกเลี่ยงคำเตือน GoTrueClient
+  if (url === lastUrl && key === lastKey && schoolId === lastSchoolId && currentClient) {
+    return;
+  }
+  
+  lastUrl = url;
+  lastKey = key;
+  lastSchoolId = schoolId;
   
   const options = {
     global: {
