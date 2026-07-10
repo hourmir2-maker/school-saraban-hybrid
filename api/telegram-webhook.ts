@@ -616,7 +616,14 @@ async function executeDocAssignment(
     const { data: teacherProfile } = await supabase.from('profiles').select('telegram_chat_id').eq('email', teacher.email).maybeSingle();
 
     if (teacherProfile?.telegram_chat_id) {
-      await sendTelegramMessage(botToken, parseInt(teacherProfile.telegram_chat_id), personalMsg);
+      const teacherReplyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📢 ประชาสัมพันธ์ลงกลุ่มกลาง', callback_data: `action=broadcast_group&assign_id=${assignment.id}` }
+          ]
+        ]
+      };
+      await sendTelegramMessage(botToken, parseInt(teacherProfile.telegram_chat_id), personalMsg, teacherReplyMarkup);
     } else {
       await sendTelegramMessage(botToken, chatId, `📢 <b>แจ้งมอบหมายงานใหม่</b>\n\n• <b>ถึงคุณครู</b>: ${teacherName}\n• <b>เรื่อง</b>: ${doc.subject}\n• <b>คำสั่งการ</b>: ${instruction}\n\n📄 <a href="${finalFileUrl}">เปิดดูเอกสารสั่งการ</a>`);
     }
@@ -844,6 +851,31 @@ export default async function handler(req: any, res: any) {
           await sendTelegramMessage(botToken, callbackChatId, '💬 กรุณาพิมพ์ข้อความคำสั่งการของคุณครูส่งเข้ามาในแชทนี้ได้เลยค่ะ 🌸');
         } else {
           await executeDocAssignment(docId, teacherId, instruction, botToken, callbackChatId, profileLinked, supabase);
+        }
+      } else if (action === 'broadcast_group') {
+        const assignId = params.get('assign_id');
+        const { data: assign } = await supabase
+          .from('doc_assignments')
+          .select('*, incoming_docs(subject, doc_number, file_url), teachers(prefix, first_name, last_name)')
+          .eq('id', assignId)
+          .single();
+
+        if (assign) {
+          const { data: settings } = await supabase
+            .from('settings')
+            .select('telegram_group_id')
+            .eq('school_id', schoolId)
+            .maybeSingle();
+
+          if (settings?.telegram_group_id) {
+            const teacherName = `${assign.teachers?.prefix || ''}${assign.teachers?.first_name} ${assign.teachers?.last_name}`;
+            const broadcastMsg = `📢 <b>ประชาสัมพันธ์ / แจ้งเพื่อทราบ</b>\n\n• <b>เรื่อง</b>: ${assign.incoming_docs?.subject}\n• <b>เลขที่หนังสือ</b>: ${assign.incoming_docs?.doc_number}\n• <b>ผู้รับมอบหมาย</b>: ${teacherName}\n• <b>คำสั่งการ/การดำเนินการ</b>: ${assign.instruction}\n\n📄 <a href="${assign.incoming_docs?.file_url}">เปิดดูเอกสารสั่งการที่ลงนามแล้ว</a>`;
+
+            await sendTelegramMessage(botToken, settings.telegram_group_id, broadcastMsg);
+            await sendTelegramMessage(botToken, callbackChatId, '✅ ได้ทำการประชาสัมพันธ์ข่าวสารเรื่องนี้เข้ากลุ่มกลางเรียบร้อยแล้วค่ะ 📢');
+          } else {
+            await sendTelegramMessage(botToken, callbackChatId, '⚠️ ไม่พบข้อมูลกลุ่มกลางในตารางตั้งค่าค่ะ กรุณาตั้งค่ากลุ่มกลางก่อนนะคะ');
+          }
         }
       }
 
