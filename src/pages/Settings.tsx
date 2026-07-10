@@ -36,6 +36,8 @@ export default function Settings() {
     line_oa_link: '',
     telegram_bot_token: '',
     telegram_bot_username: '',
+    telegram_group_id: '',
+    telegram_group_link: '',
     gemini_api_key: '',
     ai_cowork_api_key: '',
     gas_url: ''
@@ -268,7 +270,9 @@ export default function Settings() {
           gas_url: gas_url ? gas_url.trim() : null,
           line_channel_access_token: settings.line_channel_access_token || null,
           telegram_bot_token: settings.telegram_bot_token || null,
-          telegram_bot_username: settings.telegram_bot_username || null
+          telegram_bot_username: settings.telegram_bot_username || null,
+          telegram_group_id: settings.telegram_group_id || null,
+          telegram_group_link: settings.telegram_group_link || null
         })
         .eq('id', activeProfile.id);
         
@@ -526,6 +530,26 @@ export default function Settings() {
                     value={settings.telegram_bot_username || ''}
                     onChange={e => setSettings({...settings, telegram_bot_username: e.target.value})}
                     placeholder="เช่น ChabaSchoolBot"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-[#229ED9]">Telegram Group ID (สำหรับแจ้งเตือนส่วนกลาง)</label>
+                  <input 
+                    type="text" 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
+                    value={settings.telegram_group_id || ''}
+                    onChange={e => setSettings({...settings, telegram_group_id: e.target.value})}
+                    placeholder="เช่น -1002030405060"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-[#229ED9]">ลิงก์คำเชิญเข้าร่วมกลุ่ม Telegram (Invite Link)</label>
+                  <input 
+                    type="text" 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
+                    value={settings.telegram_group_link || ''}
+                    onChange={e => setSettings({...settings, telegram_group_link: e.target.value})}
+                    placeholder="เช่น https://t.me/+AbCdEfGh1234..."
                   />
                 </div>
               </div>

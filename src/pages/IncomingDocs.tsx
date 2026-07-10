@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { uploadFileToDrive, deleteFileFromDrive, uploadToSupabase, deleteFromSupabase } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { sendLineNotification, sendInteractiveFlexMessage, sendBulkFlexCarousel } from '../lib/lineNotify';
+import { sendTelegramNotification } from '../lib/telegramNotify';
 import { applyDigitalStamps } from '../lib/pdfService';
 import { summarizeDocument } from '../lib/aiService';
 import Modal from '../components/Modal';
@@ -272,7 +273,38 @@ export default function IncomingDocs() {
         lineNotifyStatus = `❌ เกิดข้อผิดพลาดในการส่ง LINE: ${lineErr.message}`;
       }
 
-      alert(`เกษียณหนังสือและมอบหมายงานเรียบร้อยแล้ว\n\n${lineNotifyStatus}`);
+      // ส่งการแจ้งเตือนทาง Telegram
+      let telegramNotifyStatus = '';
+      try {
+        let telegramChatId = undefined;
+        if (teacher?.email) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('telegram_chat_id')
+            .eq('email', teacher.email.toLowerCase().trim())
+            .maybeSingle();
+          if (prof) {
+            telegramChatId = prof.telegram_chat_id;
+          }
+        }
+
+        if (telegramChatId) {
+          // ส่งตรงถึงครูผู้รับมอบหมายทาง Telegram
+          const telegramPersonalMsg = `📬 <b>มีงานมอบหมายใหม่ถึงคุณครูค่ะ</b>\n\n• <b>เรื่อง</b>: ${selectedDoc.subject}\n• <b>เลขที่รับ</b>: ${selectedDoc.doc_number}\n• <b>คำสั่งการ/แนวทาง</b>: ${assignForm.instruction || 'โปรดดำเนินการตามหนังสือฉบับนี้'}\n\n📄 <a href="${selectedDoc.file_url}">เปิดดูต้นฉบับเอกสาร</a>`;
+          await sendTelegramNotification(telegramPersonalMsg, telegramChatId);
+          telegramNotifyStatus = ` และ Telegram ✅`;
+        } else {
+          // ส่งเข้ากลุ่ม Telegram ส่วนกลาง
+          const telegramGroupMsg = `📢 <b>แจ้งมอบหมายงานใหม่</b>\n\n• <b>ถึงคุณครู</b>: ${teacherName}\n• <b>เรื่อง</b>: ${selectedDoc.subject}\n• <b>เลขที่รับ</b>: ${selectedDoc.doc_number}\n• <b>คำสั่งการ</b>: ${assignForm.instruction || 'โปรดดำเนินการตามหนังสือฉบับนี้'}\n\n📄 <a href="${selectedDoc.file_url}">เปิดดูต้นฉบับเอกสาร</a>`;
+          await sendTelegramNotification(telegramGroupMsg);
+          telegramNotifyStatus = ` และส่งเข้ากลุ่ม Telegram ส่วนกลาง 📣`;
+        }
+      } catch (tgErr: any) {
+        console.error('[TELEGRAM NOTIFY ERROR]', tgErr);
+        telegramNotifyStatus = ` (Telegram ล้มเหลว: ${tgErr.message})`;
+      }
+
+      alert(`เกษียณหนังสือและมอบหมายงานเรียบร้อยแล้ว\n\n${lineNotifyStatus}${telegramNotifyStatus}`);
       setIsAssignModalOpen(false);
       resetForm();
       fetchDocs();
@@ -433,11 +465,24 @@ export default function IncomingDocs() {
       } else {
         lineNotifyStatus = ' (พักรอเสนอผู้บริหารเรียบร้อย)';
       }
+
+      // ส่งแจ้งเตือนข่าวสารเข้ากลุ่ม Telegram
+      let telegramNotifyStatus = '';
+      if (!isHolding) {
+        try {
+          const telegramMsg = `📥 <b>เสนอหนังสือรอเกษียณเข้าใหม่</b>\n\n• <b>เรื่อง</b>: ${formData.subject}\n• <b>จาก</b>: ${formData.from_agency}\n• <b>เลขที่รับ</b>: ${finalDocNum}\n\n📄 <a href="${file_url}">เปิดดูต้นฉบับหนังสือ</a>`;
+          await sendTelegramNotification(telegramMsg);
+          telegramNotifyStatus = ' และส่งแจ้งเตือน Telegram สำเร็จ ✅';
+        } catch (tgErr: any) {
+          console.error('[TELEGRAM NOTIFY ERROR]', tgErr);
+          telegramNotifyStatus = ` (Telegram ล้มเหลว: ${tgErr.message})`;
+        }
+      }
       
       setIsModalOpen(false);
       resetForm();
       fetchDocs();
-      alert(`ลงรับหนังสือเรียบร้อยแล้ว${lineNotifyStatus}`);
+      alert(`ลงรับหนังสือเรียบร้อยแล้ว${lineNotifyStatus}${telegramNotifyStatus}`);
 
     } catch (err: any) {
       alert(`บันทึกไม่สำเร็จ: ${err.message}`);
