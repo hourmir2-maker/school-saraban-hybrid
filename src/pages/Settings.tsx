@@ -11,8 +11,12 @@ import {
   Upload,
   Send,
   Sparkles,
-  Info
+  Info,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle
 } from 'lucide-react';
+import Modal from '../components/Modal';
 
 export default function Settings() {
   const [loading, setLoading] = useState(true);
@@ -43,6 +47,12 @@ export default function Settings() {
   const [sigPreviewUrl, setSigPreviewUrl] = useState<string | null>(null);
   const [showGasModal, setShowGasModal] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [noticeModal, setNoticeModal] = useState<{ isOpen: boolean; title: string; message: string; isSuccess: boolean }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    isSuccess: true
+  });
 
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationStatus, setMigrationStatus] = useState('');
@@ -219,7 +229,12 @@ export default function Settings() {
       const activeProfile = getActiveSchoolProfile();
       const isUUID = activeProfile?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeProfile.id) : false;
       if (!activeProfile?.id || !isUUID) {
-        alert('ไม่พบรหัสโรงเรียนที่ถูกต้อง กรุณาลงชื่อเข้าใช้งานใหม่อีกครั้ง');
+        setNoticeModal({
+          isOpen: true,
+          title: 'เกิดข้อผิดพลาด',
+          message: 'ไม่พบรหัสโรงเรียนที่ถูกต้อง กรุณาลงชื่อเข้าใช้งานใหม่อีกครั้งค่ะ',
+          isSuccess: false
+        });
         return;
       }
 
@@ -306,11 +321,21 @@ export default function Settings() {
         }
       }
 
-      alert('บันทึกการตั้งค่าเรียบร้อยแล้ว' + telegramWebhookNotice);
+      setNoticeModal({
+        isOpen: true,
+        title: 'บันทึกการตั้งค่าสำเร็จ',
+        message: 'ระบบได้ทำการบันทึกข้อมูลการตั้งค่าโรงเรียนเรียบร้อยแล้วค่ะ' + telegramWebhookNotice,
+        isSuccess: true
+      });
       fetchSettings();
     } catch (err: any) {
       console.error(err);
-      alert('บันทึกไม่สำเร็จ: ' + err.message);
+      setNoticeModal({
+        isOpen: true,
+        title: 'เกิดข้อผิดพลาด',
+        message: 'บันทึกการตั้งค่าไม่สำเร็จ: ' + err.message,
+        isSuccess: false
+      });
     } finally {
       setIsSaving(false);
     }
@@ -1055,6 +1080,35 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={noticeModal.isOpen}
+        onClose={() => setNoticeModal(prev => ({ ...prev, isOpen: false }))}
+        title={noticeModal.title}
+      >
+        <div className="flex flex-col items-center text-center p-4">
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 border ${
+            noticeModal.isSuccess 
+              ? 'bg-green-50 text-green-500 border-green-200 shadow-lg shadow-green-50' 
+              : 'bg-red-50 text-red-500 border-red-200 shadow-lg shadow-red-50'
+          }`}>
+            {noticeModal.isSuccess ? (
+              <CheckCircle2 size={36} className="animate-bounce" />
+            ) : (
+              <XCircle size={36} className="animate-pulse" />
+            )}
+          </div>
+          <p className="text-slate-800 font-bold text-base whitespace-pre-line leading-relaxed max-w-md">
+            {noticeModal.message}
+          </p>
+          <button
+            onClick={() => setNoticeModal(prev => ({ ...prev, isOpen: false }))}
+            className="mt-8 px-10 py-3 bg-brand-primary hover:bg-green-700 text-white rounded-2xl font-black text-sm active:scale-95 transition-all shadow-lg shadow-green-100"
+          >
+            ตกลง
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
