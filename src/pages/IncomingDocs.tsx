@@ -296,8 +296,8 @@ export default function IncomingDocs() {
         } else {
           // ส่งเข้ากลุ่ม Telegram ส่วนกลาง
           const telegramGroupMsg = `📢 <b>แจ้งมอบหมายงานใหม่</b>\n\n• <b>ถึงคุณครู</b>: ${teacherName}\n• <b>เรื่อง</b>: ${selectedDoc.subject}\n• <b>เลขที่รับ</b>: ${selectedDoc.doc_number}\n• <b>คำสั่งการ</b>: ${assignForm.instruction || 'โปรดดำเนินการตามหนังสือฉบับนี้'}\n\n📄 <a href="${selectedDoc.file_url}">เปิดดูต้นฉบับเอกสาร</a>`;
-          await sendTelegramNotification(telegramGroupMsg);
-          telegramNotifyStatus = ` และส่งเข้ากลุ่ม Telegram ส่วนกลาง 📣`;
+          await sendTelegramNotification(telegramGroupMsg, 'central');
+          telegramNotifyStatus = ' และส่งเข้ากลุ่ม Telegram ส่วนกลาง 📣';
         }
       } catch (tgErr: any) {
         console.error('[TELEGRAM NOTIFY ERROR]', tgErr);
@@ -480,7 +480,7 @@ export default function IncomingDocs() {
             ]
           };
           
-          await sendTelegramNotification(telegramMsg, undefined, telegramReplyMarkup);
+          await sendTelegramNotification(telegramMsg, 'proposal', telegramReplyMarkup);
           telegramNotifyStatus = ' และส่งแจ้งเตือน Telegram สำเร็จ ✅';
         } catch (tgErr: any) {
           console.error('[TELEGRAM NOTIFY ERROR]', tgErr);

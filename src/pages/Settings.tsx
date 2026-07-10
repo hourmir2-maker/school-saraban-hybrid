@@ -38,6 +38,8 @@ export default function Settings() {
     telegram_bot_username: '',
     telegram_group_id: '',
     telegram_group_link: '',
+    telegram_group_id_central: '',
+    telegram_group_id_proposal: '',
     gemini_api_key: '',
     ai_cowork_api_key: '',
     gas_url: ''
@@ -96,9 +98,12 @@ export default function Settings() {
       }
 
       if (data) {
+        const [centralId, proposalId] = (data.telegram_group_id || '').split('|');
         setSettings({
           ...data,
-          gas_url: gasUrl
+          gas_url: gasUrl,
+          telegram_group_id_central: centralId || '',
+          telegram_group_id_proposal: proposalId || '',
         });
         setPreviewUrl(data.school_logo_url);
         setSigPreviewUrl(data.director_signature_url);
@@ -240,15 +245,17 @@ export default function Settings() {
         return;
       }
 
-      // แยก gas_url ออกจาก payload ของตาราง settings
-      const { gas_url, ...settingsPayload } = settings;
+      // แยก gas_url และกลุ่มย่อยออกจาก payload ของตาราง settings
+      const { gas_url, telegram_group_id_central, telegram_group_id_proposal, ...settingsPayload } = settings;
+      const combinedTelegramGroupId = `${(telegram_group_id_central || '').trim()}|${(telegram_group_id_proposal || '').trim()}`;
 
       const payload = { 
         ...settingsPayload, 
         school_id: activeProfile.id,
         line_oa_link: formattedLineOa,
         school_logo_url: logoUrl, 
-        director_signature_url: sigUrl 
+        director_signature_url: sigUrl,
+        telegram_group_id: combinedTelegramGroupId
       };
       
       const { data: existing } = await supabase
@@ -271,7 +278,7 @@ export default function Settings() {
           line_channel_access_token: settings.line_channel_access_token || null,
           telegram_bot_token: settings.telegram_bot_token || null,
           telegram_bot_username: settings.telegram_bot_username || null,
-          telegram_group_id: settings.telegram_group_id || null,
+          telegram_group_id: combinedTelegramGroupId,
           telegram_group_link: settings.telegram_group_link || null
         })
         .eq('id', activeProfile.id);
@@ -533,16 +540,26 @@ export default function Settings() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-[#229ED9]">Telegram Group ID (สำหรับแจ้งเตือนส่วนกลาง)</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-[#229ED9]">Telegram Group ID (สำหรับแจ้งเตือนส่วนกลาง / PR)</label>
                   <input 
                     type="text" 
                     className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
-                    value={settings.telegram_group_id || ''}
-                    onChange={e => setSettings({...settings, telegram_group_id: e.target.value})}
+                    value={settings.telegram_group_id_central || ''}
+                    onChange={e => setSettings({...settings, telegram_group_id_central: e.target.value})}
                     placeholder="เช่น -1002030405060"
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-[#229ED9]">Telegram Proposal Group ID (สำหรับเสนอหนังสือเกษียณ)</label>
+                  <input 
+                    type="text" 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
+                    value={settings.telegram_group_id_proposal || ''}
+                    onChange={e => setSettings({...settings, telegram_group_id_proposal: e.target.value})}
+                    placeholder="เช่น -1002030405060"
+                  />
+                </div>
+                <div className="space-y-1.5 col-span-full">
                   <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-[#229ED9]">ลิงก์คำเชิญเข้าร่วมกลุ่ม Telegram (Invite Link)</label>
                   <input 
                     type="text" 

@@ -34,7 +34,7 @@ function getVercelBaseUrl(): string {
  * @param message ข้อความแจ้งเตือน (รองรับรูปแบบ HTML)
  * @param specificToId รหัสผู้รับปลายทาง (ถ้าละไว้ จะดึง telegram_group_id จากหน้าตั้งค่าโรงเรียนโดยอัตโนมัติ)
  */
-export async function sendTelegramNotification(message: string, specificToId?: string, replyMarkup?: any) {
+export async function sendTelegramNotification(message: string, specificToId?: 'central' | 'proposal' | string, replyMarkup?: any) {
   try {
     const activeSchoolId = localStorage.getItem('active_school_id');
     if (!activeSchoolId) return;
@@ -46,7 +46,18 @@ export async function sendTelegramNotification(message: string, specificToId?: s
       .eq('school_id', activeSchoolId)
       .maybeSingle();
 
-    let targetId = specificToId || settings?.telegram_group_id;
+    const rawGroupId = settings?.telegram_group_id || '';
+    const [centralId, proposalId] = rawGroupId.split('|');
+
+    let targetId = '';
+    if (specificToId === 'central') {
+      targetId = centralId || '';
+    } else if (specificToId === 'proposal' || !specificToId) {
+      targetId = proposalId || centralId || ''; // หากระบุเป็นเสนอ หรือไม่ระบุปลายทาง ให้ใช้กลุ่มเสนอ (หรือกลุ่มกลางถ้าไม่ได้แยก)
+    } else {
+      targetId = specificToId;
+    }
+
     if (!targetId) {
       // หากไม่ได้ตั้งค่ากลุ่มกลาง ลองตรวจสอบว่า ผอ. (director) ผูก Telegram ส่วนบุคคลไว้หรือยัง
       const { data: director } = await supabase
