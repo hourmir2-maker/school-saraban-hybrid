@@ -10,7 +10,7 @@
 ---
 
 ## 💾 ตอนที่ 1: การตั้งค่าระบบเก็บเอกสาร (Google Drive Setup)
-เนื่องจากเราจะเก็บไฟล์หนังสือราชการแยกบัญชีของแต่ละโรงเรียนเพื่อความจุฟรี 15 GB และความเป็นส่วนตัวของข้อมูล ให้ทำตามนี้ค่ะ:
+เนื่องจากเราจะเก็บไฟล์หนังสือราชการแยกบัญชีของแต่ละโรงเรียนเพื่อความจุฟรี 15 GB และความเป็นส่วนตัว of ข้อมูล ให้ทำตามนี้ค่ะ:
 
 > 💡 **ระบบจะสร้างโฟลเดอร์ให้อัตโนมัติ** — เมื่ออัปโหลดไฟล์ครั้งแรก สคริปต์จะสร้างโฟลเดอร์หลักชื่อ **`ระบบบริหารจัดการข้อมูล`** ใน Google Drive ของโรงเรียน และสร้างโฟลเดอร์ย่อยแยกตามประเภทเอกสาร (หนังสือรับ, หนังสือส่ง, คำสั่ง ฯลฯ) ไว้ภายในอัตโนมัติ **ไม่ต้องสร้างโฟลเดอร์ด้วยตนเอง**
 
@@ -50,8 +50,11 @@
 1. เปิดแอป Telegram ค้นหาชื่อบัญชี `@BotFather`
 2. พิมพ์ข้อความคุยพิมพ์ว่า `/newbot`
 3. พิมพ์ตั้งชื่อบอท เช่น `น้องชบาสารบรรณ โรงเรียนบ้านควน`
-4. ตั้งชื่อผู้ใช้บอท (Username) ต้องลงท้ายด้วยคำว่า `bot` เสมอ เช่น `ban_kuan_saraban_bot`
+4. ตั้งชื่อผู้ใช้บอท (Username) ต้องลงท้ายด้วยคำว่า `bot` เสมอ เช่น `ban_kuan_saraban_bot` (ไม่รวมเครื่องหมาย @)
 5. คุณครูจะได้รับรหัส **HTTP API Token** ทันที (ข้อความตัวหนังสือยาวๆ) ให้คัดลอกรหัสนี้เก็บไว้
+6. **ตั้งค่า Webhook บอท**: ส่งคำขอตั้งค่า Webhook เพื่อผูกเข้ากับเซิร์ฟเวอร์ด้วยการพิมพ์ URL นี้ลงในเว็บเบราว์เซอร์:
+   `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://[โดเมนเซิร์ฟเวอร์]/api/telegram-webhook?school_id=[รหัสโรงเรียน_uuid]`
+   *(เปลี่ยน `<TOKEN>` เป็นโทเค็นบอท และ `[โดเมนเซิร์ฟเวอร์]` เป็น URL โฮสต์ของโรงเรียน)*
 
 ### 💬 ทางเลือกที่ B: สำหรับระบบ LINE OA
 1. เข้าไปสร้างบัญชีบอทที่ [LINE Official Account Manager](https://manager.line.biz)
@@ -74,7 +77,8 @@
    * **ชื่อโรงเรียน:** กรอกชื่อเต็มสถานศึกษา
    * **รหัสโรงเรียน (School Code):** กรอกรหัสโรงเรียนที่คุณครูแอดมินส่วนกลางกำหนดให้ (เช่น `SKW001`) เพื่อผูกข้อมูลในฐานข้อมูลกลาง
    * **Google Drive GAS URL:** วางลิงก์ที่ลงท้ายด้วย `/exec` (ที่ได้จากตอนที่ 1)
-   * **LINE Token** หรือ **Telegram Token:** วางรหัสโทเค็นบอทของโรงเรียนคุณครู (ที่ได้จากตอนที่ 2)
+   * **Telegram Bot Token & Username**: สำหรับโรงเรียนที่เปิดบริการแจ้งเตือนพรีเมียมผ่าน Telegram
+   * **LINE Token & ลิงก์ LINE OA**: สำหรับโรงเรียนที่เชื่อมต่อทาง LINE
 4. คลิกปุ่ม **"บันทึกข้อมูล"** ระบบจะผูกบริการแจ้งเตือนและระบบจัดเก็บไฟล์เข้ากับบัญชีของโรงเรียนคุณครูโดยอัตโนมัติทันทีค่ะ!
 
 ---
@@ -86,123 +90,240 @@
 2. กรอกอีเมล, รหัสผ่าน, ชื่อจริง
 3. ในช่อง **"รหัสโรงเรียน (School Code)"** ให้ครูทุกคนกรอกรหัสเดียวกันกับที่โรงเรียนใช้ (เช่น `SKW001`)
 4. เมื่อกดลงทะเบียนเสร็จสิ้น ระบบหลังบ้านจะนำครูคนนั้นเข้าผูกกับบัญชีโรงเรียน และมอบสิทธิ์บทบาทเป็น **ครูทั่วไป (`'teacher'`)** ให้เข้าใช้งานระบบเพื่อส่งเสนอหนังสือราชการได้ทันทีโดยไม่ต้องรอให้แอดมินกดยืนยันตัวตนทีละคนค่ะ
+5. **การผูกบัญชี Telegram ส่วนบุคคล**:
+   * ไปที่หน้าเมนู **"ข้อมูลส่วนตัว"** (Profile)
+   * คลิกปุ่ม **"เชื่อมต่อ Telegram Bot ตอนนี้"** แอปจะลิงก์ไปหน้าห้องแชทของบอทโดยอัตโนมัติ
+   * กดปุ่ม **Start (เริ่ม)** เพื่อทำการผูกบัญชีและรหัสพนักงานให้เสร็จสมบูรณ์
 
 ---
 
-> [!TIP]
-> **การตั้งค่าสำหรับผู้อำนวยการ (ผอ.):**
-> เมื่อ ผอ. ลงทะเบียนบัญชีในระบบเสร็จเรียบร้อยแล้ว ให้แอดมินไอทีเข้าไปที่เมนู **"จัดการสิทธิ์"** ในแอป Desktop จากนั้นค้นหารายชื่อของ ผอ. แล้วกดสลับบทบาท (Role) จาก `teacher` ให้เป็น **`director`** (ผู้อำนวยการ) เพื่อให้ ผอ. ได้รับสิทธิ์ในการเกษียณหนังสือราชการและรับข้อความปุ่มกดส่งอนุมัติผ่านแชทได้ค่ะ ✍️🌸
+## 👑 ตอนที่ 5: ระบบจัดการสิทธิ์พรีเมียม (Premium Tier / Paywall)
+ระบบนี้แยกระดับโรงเรียนสมาชิกเป็น 2 สถานะคือ **Free** และ **Premium** ซึ่งจำกัดฟีเจอร์การเข้าถึงข้อมูลตามนโยบายระบบคีย์กลาง:
+
+*   **ฟีเจอร์พรีเมียม (Premium Features)**:
+    1.  **ทะเบียนหนังสือส่ง (Outgoing Docs)**
+    2.  **คำสั่งแต่งตั้ง (Orders)**
+    3.  **บันทึกข้อความ (Memos)**
+    4.  **คลังสมองความรู้และระบบค้นหา RAG (Virtual Drive / Intelligence Hub)**
+*   **การอัปเกรดระดับสถานศึกษา**:
+    *   ควบคุมสิทธิ์โดยบัญชีอีเมลกลางของ **Super Admin** ที่ระบุใน `VITE_SUPER_ADMIN_EMAIL` ในไฟล์ตั้งค่า `.env`
+    *   Super Admin จะมีแท็บเมนู **"อนุมัติโรงเรียน"** (School Approvals) ปรากฏในแถบด้านซ้าย
+    *   แอดมินกลางสามารถกดสลับปุ่ม **"★ Premium / ☆ Free"** ให้กับโรงเรียนใดๆ ก็ได้ในระบบ เพื่อควบคุมการเข้าถึงฟีเจอร์ทันทีโดยไม่มีการหน่วงเวลา
 
 ---
 
-## 🛠️ ตอนที่ 5: การเตรียมโครงสร้างฐานข้อมูลและ RLS (Database & SQL Setup)
+## 🛠️ ตอนที่ 6: การเตรียมโครงสร้างฐานข้อมูลและ RLS (Database & SQL Setup)
 *สำหรับแอดมินระบบส่วนกลางที่ต้องการติดตั้งหรือล้างตารางข้อมูลใน Supabase ใหม่ เพื่อรองรับระบบ AI และความปลอดภัยระดับ Multi-Tenant*
 
-### 1. คำสั่ง SQL สำหรับสร้างตารางระบบ AI (RAG & Students)
-รันคำสั่งเหล่านี้ใน Supabase SQL Editor เพื่อสร้างตารางสำหรับเก็บข้อมูลของนักเรียนและคลังความรู้ AI:
+### 1. คำสั่ง SQL สำหรับระบบ Premium และ Telegram Bot (Patch Telegram)
+รันเพื่อเพิ่มฟิลด์ควบคุมสิทธิ์พรีเมียมและ Chat ID เพื่อรองรับการแจ้งเตือนส่วนตัว:
 
 ```sql
--- 1. เปิดใช้งาน Vector Extension สำหรับระบบสืบค้น AI (RAG)
+-- 1. เพิ่มฟิลด์ Premium ในตาราง schools
+ALTER TABLE public.schools 
+  ADD COLUMN IF NOT EXISTS is_premium boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS premium_expires_at timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS telegram_bot_token text,
+  ADD COLUMN IF NOT EXISTS telegram_bot_username text;
+
+-- 2. เพิ่มฟิลด์ในตาราง settings
+ALTER TABLE public.settings
+  ADD COLUMN IF NOT EXISTS telegram_bot_token text,
+  ADD COLUMN IF NOT EXISTS telegram_bot_username text;
+
+-- 3. เพิ่มฟิลด์ในตาราง profiles
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS telegram_chat_id text;
+
+-- 4. สร้างตาราง ar_usages สำหรับจำกัดโควตาบทเรียน AR
+CREATE TABLE IF NOT EXISTS public.ar_usages (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    school_id uuid REFERENCES public.schools(id) ON DELETE CASCADE NOT NULL,
+    ar_lesson_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- ปิด RLS ตาราง AR เพื่อความสะดวกรวดเร็วในการอัปเดตสถิติ
+ALTER TABLE public.ar_usages DISABLE ROW LEVEL SECURITY;
+
+-- 5. สร้าง Index เพื่อเพิ่มประสิทธิภาพ
+CREATE INDEX IF NOT EXISTS idx_ar_usages_user ON public.ar_usages(user_id);
+CREATE INDEX IF NOT EXISTS idx_ar_usages_school ON public.ar_usages(school_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_telegram ON public.profiles(telegram_chat_id);
+```
+
+### 2. คำสั่ง SQL สำหรับระบบ RAG / Intelligence Hub (คลังสมองอัจฉริยะ)
+รันคำสั่งเหล่านี้เพื่อสร้างตาราง วิว ฟังก์ชัน RPC สำหรับสืบค้น Vector ความละเอียดสูงผ่าน Gemini Embeddings:
+
+```sql
+-- 1. เปิดใช้งาน Extension pgvector
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- 2. สร้างตารางประวัตินักเรียน (students)
-CREATE TABLE IF NOT EXISTS public.students (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE,
-  student_code TEXT,
-  prefix TEXT,
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
-  class_level TEXT,
-  class_room TEXT,
-  academic_year TEXT DEFAULT '2569',
-  graduation_status TEXT DEFAULT 'ปกติ',
-  created_at TIMESTAMPTZ DEFAULT now()
+-- 2. ล้างตาราง/วิว/ฟังก์ชันเก่าที่อาจค้างอยู่ในระบบเพื่อป้องกันโครงสร้างซ้ำซ้อน
+DROP VIEW IF EXISTS public.unique_knowledge_docs CASCADE;
+DROP FUNCTION IF EXISTS public.match_knowledge CASCADE;
+DROP FUNCTION IF EXISTS public.match_private_knowledge CASCADE;
+DROP TABLE IF EXISTS public.school_knowledge CASCADE;
+DROP TABLE IF EXISTS public.ai_private_knowledge_chunks CASCADE;
+DROP TABLE IF EXISTS public.ai_knowledge_base CASCADE;
+
+-- 3. สร้างตารางเก็บข้อมูลองค์ความรู้โรงเรียน (คลังส่วนกลาง)
+CREATE TABLE public.school_knowledge (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    school_id uuid DEFAULT get_user_school_id() NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    document_name text NOT NULL,
+    page_number integer NOT NULL,
+    chunk_text text NOT NULL,
+    embedding public.vector(768),
+    created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. สร้างตารางคลังสมองความรู้ส่วนกลาง (school_knowledge)
-CREATE TABLE IF NOT EXISTS public.school_knowledge (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE,
-  document_name TEXT NOT NULL,
-  page_number INTEGER DEFAULT 1,
-  chunk_text TEXT NOT NULL,
-  embedding vector(768),
-  created_at TIMESTAMPTZ DEFAULT now()
+-- เปิด RLS ของตาราง school_knowledge
+ALTER TABLE public.school_knowledge ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "School-based select" ON public.school_knowledge 
+    FOR SELECT USING (school_id = get_user_school_id());
+
+CREATE POLICY "School-based all" ON public.school_knowledge 
+    FOR ALL USING (school_id = get_user_school_id());
+
+
+-- 4. สร้าง View สำหรับแสดงรายชื่อไฟล์คลังความรู้แบบไม่ซ้ำ
+CREATE OR REPLACE VIEW public.unique_knowledge_docs AS
+SELECT 
+    document_name,
+    max(created_at) as created_at
+FROM public.school_knowledge
+GROUP BY document_name;
+
+
+-- 5. สร้างตารางสำหรับจัดเก็บไฟล์คลังความรู้ส่วนตัวของคุณครู
+CREATE TABLE public.ai_knowledge_base (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    school_id uuid DEFAULT get_user_school_id() NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    teacher_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    folder_id text NOT NULL,
+    folder_name text NOT NULL,
+    file_name text NOT NULL,
+    file_url text NOT NULL,
+    file_type text NOT NULL,
+    content_text text,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
-CREATE INDEX IF NOT EXISTS school_knowledge_embedding_idx ON school_knowledge USING ivfflat (embedding vector_cosine_ops);
 
--- 4. สร้างตารางคลังเก็บไฟล์ส่วนตัวของครู (ai_knowledge_base)
-CREATE TABLE IF NOT EXISTS public.ai_knowledge_base (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  teacher_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE,
-  file_name TEXT NOT NULL,
-  folder_id TEXT DEFAULT '08',
-  file_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+-- เปิด RLS ของตาราง ai_knowledge_base
+ALTER TABLE public.ai_knowledge_base ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "School-based select" ON public.ai_knowledge_base 
+    FOR SELECT USING (school_id = get_user_school_id());
+
+CREATE POLICY "School-based all" ON public.ai_knowledge_base 
+    FOR ALL USING (school_id = get_user_school_id());
+
+
+-- 6. สร้างตารางสำหรับจัดเก็บ Chunks ของคลังความรู้ส่วนตัว
+CREATE TABLE public.ai_private_knowledge_chunks (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    school_id uuid DEFAULT get_user_school_id() NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    file_id uuid REFERENCES public.ai_knowledge_base(id) ON DELETE CASCADE NOT NULL,
+    teacher_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    page_number integer NOT NULL,
+    chunk_text text NOT NULL,
+    embedding public.vector(768),
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 5. สร้างตารางชิ้นข้อมูลความรู้ส่วนตัวของครู (ai_private_knowledge_chunks)
-CREATE TABLE IF NOT EXISTS public.ai_private_knowledge_chunks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  file_id UUID REFERENCES public.ai_knowledge_base(id) ON DELETE CASCADE,
-  teacher_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  page_number INTEGER DEFAULT 1,
-  chunk_text TEXT NOT NULL,
-  embedding vector(768),
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS private_chunks_embedding_idx ON ai_private_knowledge_chunks USING ivfflat (embedding vector_cosine_ops);
-```
+-- เปิด RLS ของตาราง ai_private_knowledge_chunks
+ALTER TABLE public.ai_private_knowledge_chunks ENABLE ROW LEVEL SECURITY;
 
-### 2. คำสั่ง SQL สำหรับฟังก์ชันค้นหา Vector Search
-รันคำสั่งเหล่านี้เพื่อสร้าง RPC Function สำหรับการค้นหาของน้องชบา AI:
+CREATE POLICY "School-based select" ON public.ai_private_knowledge_chunks 
+    FOR SELECT USING (school_id = get_user_school_id());
 
-```sql
--- ค้นหาจากคลังกลาง
-CREATE OR REPLACE FUNCTION match_knowledge(
-  query_embedding vector(768),
-  match_threshold float DEFAULT 0.5,
-  match_count int DEFAULT 10
+CREATE POLICY "School-based all" ON public.ai_private_knowledge_chunks 
+    FOR ALL USING (school_id = get_user_school_id());
+
+
+-- 7. ฟังก์ชันสำหรับทำ Semantic Search (match_knowledge) ค้นหาข้อมูลโรงเรียน
+CREATE OR REPLACE FUNCTION public.match_knowledge (
+  query_embedding public.vector(768),
+  match_threshold float,
+  match_count int
 )
-RETURNS TABLE(id UUID, document_name TEXT, page_number INT, chunk_text TEXT, similarity float)
-LANGUAGE sql STABLE AS
-$$
-  SELECT id, document_name, page_number, chunk_text,
-    1 - (embedding <=> query_embedding) AS similarity
-  FROM school_knowledge
-  WHERE 1 - (embedding <=> query_embedding) > match_threshold
-  ORDER BY similarity DESC
+RETURNS TABLE (
+  id uuid,
+  document_name text,
+  page_number int,
+  chunk_text text,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    sk.id,
+    sk.document_name,
+    sk.page_number,
+    sk.chunk_text,
+    1 - (sk.embedding <=> query_embedding) AS similarity
+  FROM public.school_knowledge sk
+  WHERE sk.school_id = get_user_school_id()
+    AND 1 - (sk.embedding <=> query_embedding) > match_threshold
+  ORDER BY sk.embedding <=> query_embedding
   LIMIT match_count;
+END;
 $$;
 
--- ค้นหาจากคลังส่วนตัวของครู
-CREATE OR REPLACE FUNCTION match_private_knowledge(
-  query_embedding vector(768),
-  match_threshold float DEFAULT 0.5,
-  match_count int DEFAULT 10,
-  p_teacher_id UUID DEFAULT NULL
+
+-- 8. ฟังก์ชันสำหรับทำ Semantic Search (match_private_knowledge) ค้นหาข้อมูลส่วนตัวของครู
+CREATE OR REPLACE FUNCTION public.match_private_knowledge (
+  query_embedding public.vector(768),
+  match_threshold float,
+  match_count int,
+  p_teacher_id uuid
 )
-RETURNS TABLE(id UUID, file_id UUID, page_number INT, chunk_text TEXT, similarity float)
-LANGUAGE sql STABLE AS
-$$
-  SELECT id, file_id, page_number, chunk_text,
-    1 - (embedding <=> query_embedding) AS similarity
-  FROM ai_private_knowledge_chunks
-  WHERE 
-    (p_teacher_id IS NULL OR teacher_id = p_teacher_id)
-    AND 1 - (embedding <=> query_embedding) > match_threshold
-  ORDER BY similarity DESC
+RETURNS TABLE (
+  id uuid,
+  file_id uuid,
+  page_number int,
+  chunk_text text,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    apkc.id,
+    apkc.file_id,
+    apkc.page_number,
+    apkc.chunk_text,
+    1 - (apkc.embedding <=> query_embedding) AS similarity
+  FROM public.ai_private_knowledge_chunks apkc
+  WHERE apkc.teacher_id = p_teacher_id
+    AND apkc.school_id = get_user_school_id()
+    AND 1 - (apkc.embedding <=> query_embedding) > match_threshold
+  ORDER BY apkc.embedding <=> query_embedding
   LIMIT match_count;
+END;
 $$;
+
+
+-- 9. สร้าง Index สำหรับเร่งประสิทธิภาพการค้นหา Vector ด้วย HNSW
+CREATE INDEX IF NOT EXISTS school_knowledge_embedding_idx 
+ON public.school_knowledge 
+USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS ai_private_knowledge_chunks_embedding_idx 
+ON public.ai_private_knowledge_chunks 
+USING hnsw (embedding vector_cosine_ops);
 ```
 
-### 3. คำสั่ง SQL สำหรับเปิดใช้งาน Row Level Security (RLS) เพื่อป้องกันความปลอดภัยข้อมูล
-คำสั่งตั้งค่าและเปิดความปลอดภัยระดับโรงเรียน (Multi-Tenant) เพื่อให้ผู้ใช้เห็นเฉพาะข้อมูลโรงเรียนตัวเองเท่านั้น:
-
+### 3. เปิดใช้งาน RLS (Row Level Security) สำหรับตารางพื้นฐานอื่นๆ
 ```sql
--- เปิดการจำกัดสิทธิ์ความปลอดภัย RLS
+-- เปิดการจำกัดสิทธิ์ความปลอดภัย RLS ตารางทั่วไป
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
@@ -244,41 +365,3 @@ CREATE POLICY "teachers_update_own_school" ON public.teachers
 FOR UPDATE TO authenticated 
 USING (school_id IN (SELECT school_id FROM public.profiles WHERE id = auth.uid()));
 ```
-
----
-
-## 🤖 การตั้งค่า LINE Bot แยกตามโรงเรียน
-
-ระบบออกแบบให้รองรับ **LINE Bot แยกต่างหากสำหรับแต่ละโรงเรียน** เพื่อให้ครูในโรงเรียน A ได้รับการตอบกลับจาก Bot ของโรงเรียน A เท่านั้น ไม่ปะปนกับโรงเรียน B
-
-### ⚙️ ค่าที่ต้องกรอกในฐานข้อมูล (ตาราง `schools`)
-
-| ฟิลด์ | ความหมาย | วิธีรับค่า |
-|-------|-----------|-----------|
-| `line_channel_access_token` | Channel Access Token ของ LINE OA โรงเรียน | ดูจาก LINE Developers Console → Messaging API → Channel access token → กด **Issue** |
-| `line_bot_destination` | รหัสระบุตัวตนของ Bot (ค่า `destination` ใน Webhook payload) | กดปุ่ม **Verify** ที่ Webhook URL ใน LINE Developers แล้วตรวจ log หรือดูใน `req.body.destination` |
-
-### 🔄 วิธีที่ระบบทำงาน
-
-1. เมื่อครูส่งข้อความมาที่ LINE Bot โรงเรียน A — ระบบจะได้รับค่า `destination` จาก LINE payload
-2. ระบบค้นหาโรงเรียนที่มี `line_bot_destination` ตรงกันในตาราง `schools`
-3. ดึง `line_channel_access_token` ของโรงเรียนนั้นมาใช้ตอบกลับ
-4. Query ข้อมูล profile ด้วย `line_user_id` **พร้อม** `school_id` เพื่อกันข้อมูลปะปนข้ามโรงเรียน
-
-### 📝 คำสั่ง SQL เพิ่ม Index เร่งความเร็ว
-
-```sql
--- รันใน Supabase SQL Editor หรือใช้ไฟล์ supabase_patch_line_index.sql
-CREATE INDEX IF NOT EXISTS idx_profiles_line_user_school 
-  ON profiles(line_user_id, school_id);
-
-CREATE INDEX IF NOT EXISTS idx_schools_line_destination 
-  ON schools(line_bot_destination) 
-  WHERE line_bot_destination IS NOT NULL;
-```
-
-> [!IMPORTANT]
-> **ขั้นตอนการ Verify Bot:** หลังกรอก Webhook URL แล้วกดปุ่ม Verify ใน LINE Developers — ระบบจะส่ง ping มาที่ webhook และ log จะแสดงค่า `destination` (เริ่มต้นด้วยอักษร U หรือ C) ให้คัดลอกค่านี้ไปกรอกในฟิลด์ `line_bot_destination` ของโรงเรียนค่ะ
-
-> [!NOTE]
-> ครูในโรงเรียน A จะได้รับการตอบกลับจาก Bot ของโรงเรียน A **เท่านั้น** แม้ว่าจะใช้ระบบ Webhook URL เดียวกันก็ตาม เนื่องจากระบบแยกแยะโรงเรียนด้วยค่า `line_bot_destination` ที่ไม่ซ้ำกัน

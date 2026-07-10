@@ -12,6 +12,7 @@ interface Profile {
   school_code?: string | null;
   signature_url?: string;
   line_user_id?: string;
+  telegram_chat_id?: string;
   extra_permissions?: Record<string, any>;
 }
 

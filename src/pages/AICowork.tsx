@@ -21,7 +21,8 @@ import {
   FileSearch,
   Megaphone,
   Gamepad2,
-  BookOpen
+  BookOpen,
+  Crown
 } from 'lucide-react';
 import { 
   extractTextFromPdf, 
@@ -35,6 +36,8 @@ import {
 } from '../lib/aiService';
 import { getAICoworkResponse } from '../services/aiCoworkService';
 import { uploadFileToDrive, deleteFileFromDrive } from '../lib/storage';
+import { usePremium } from '../hooks/usePremium';
+import PaywallOverlay from '../components/PaywallOverlay';
 
 // Standard Folders for Knowledge Base (Thai School Admin Standard)
 const KNOWLEDGE_FOLDERS = [
@@ -59,6 +62,7 @@ const KNOWLEDGE_FOLDERS = [
 
 export default function AICowork() {
   const { user, profile } = useAuth();
+  const { isPremium } = usePremium();
   const [activeView, setActiveTab] = useState<'chat' | 'drive' | 'intelligence'>('chat');
   const [loading, setLoading] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
@@ -379,6 +383,7 @@ export default function AICowork() {
           className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all ${activeView === 'drive' ? 'bg-brand-primary text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
         >
           <Database size={18} /> Virtual Drive
+          {!isPremium && <Crown size={14} className="text-amber-500 fill-amber-500 animate-pulse ml-1" />}
         </button>
         {(profile?.role === 'admin' || profile?.role === 'director') && (
           <button 
@@ -386,6 +391,7 @@ export default function AICowork() {
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all ${activeView === 'intelligence' ? 'bg-brand-primary text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
           >
             <BrainCircuit size={18} /> Intelligence Hub
+            {!isPremium && <Crown size={14} className="text-amber-500 fill-amber-500 animate-pulse ml-1" />}
           </button>
         )}
       </div>
@@ -622,7 +628,12 @@ export default function AICowork() {
       )}
 
       {activeView === 'drive' && (
-        <div className="flex-1 flex gap-6 overflow-hidden">
+        !isPremium ? (
+          <div className="flex-1 bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden relative min-h-[400px]">
+            <PaywallOverlay featureName="ระบบคลังเอกสารโรงเรียน (Virtual Drive)" />
+          </div>
+        ) : (
+          <div className="flex-1 flex gap-6 overflow-hidden">
           {/* Folders Sidebar */}
           <div className="w-72 bg-white rounded-[40px] border border-slate-100 shadow-sm flex flex-col overflow-hidden">
              <div className="p-6 border-b border-slate-50 bg-slate-50/30">
@@ -714,10 +725,16 @@ export default function AICowork() {
              </div>
           </div>
         </div>
+        )
       )}
 
       {activeView === 'intelligence' && (profile?.role === 'admin' || profile?.role === 'director') && (
-        <div className="flex-1 flex flex-col bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
+        !isPremium ? (
+          <div className="flex-1 bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden relative min-h-[400px]">
+            <PaywallOverlay featureName="ระบบคลังความรู้อัจฉริยะ (Intelligence Hub)" />
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
           <div className="p-10 border-b border-slate-50 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 flex justify-between items-center">
             <div>
               <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
@@ -787,6 +804,7 @@ export default function AICowork() {
             </div>
           </div>
         </div>
+        )
       )}
     </div>
   );

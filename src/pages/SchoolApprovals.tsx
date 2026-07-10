@@ -133,6 +133,32 @@ export default function SchoolApprovals() {
     }
   };
 
+  const handleTogglePremium = async (id: string, currentPremium: boolean) => {
+    setActionId(id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const nextPremium = !currentPremium;
+      const { error } = await supabase
+        .from('schools')
+        .update({ 
+          is_premium: nextPremium,
+          premium_expires_at: nextPremium ? null : new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setSuccess(`อัปเดตสถานะพรีเมียมเรียบร้อยแล้ว!`);
+      fetchData();
+    } catch (err: any) {
+      console.error('Toggle premium error:', err);
+      setError('อัปเดตสถานะพรีเมียมไม่สำเร็จ: ' + err.message);
+    } finally {
+      setActionId(null);
+    }
+  };
+
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6 overflow-y-auto h-full pb-24 scrollbar-hide animate-in fade-in">
       
@@ -293,6 +319,7 @@ export default function SchoolApprovals() {
                         <th className="py-4 px-6">ชื่อสถานศึกษา</th>
                         <th className="py-4 px-6">ผู้ดูแลระบบประจำโรงเรียน</th>
                         <th className="py-4 px-6">Google Drive Link</th>
+                        <th className="py-4 px-6 text-center">สถานะ Premium</th>
                         <th className="py-4 px-6 text-center">การจัดการ</th>
                       </tr>
                     </thead>
@@ -320,6 +347,19 @@ export default function SchoolApprovals() {
                             ) : (
                               <span className="text-slate-300 italic">ยังไม่ได้ตั้งค่า Google Drive</span>
                             )}
+                          </td>
+                          <td className="py-4 px-6 text-center">
+                            <button
+                              onClick={() => handleTogglePremium(school.id, school.is_premium)}
+                              disabled={actionId !== null}
+                              className={`px-3 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 mx-auto active:scale-95 disabled:opacity-50 ${
+                                school.is_premium
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                  : 'bg-slate-100 text-slate-500 border border-slate-200'
+                              }`}
+                            >
+                              {school.is_premium ? '★ Premium' : '☆ Free'}
+                            </button>
                           </td>
                           <td className="py-4 px-6 text-center">
                             <button

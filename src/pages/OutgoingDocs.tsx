@@ -20,9 +20,12 @@ import {
 } from 'lucide-react';
 import garuda3cm from '../assets/saraban/garuda-3cm.png';
 import { generateAIDraft } from '../lib/aiService';
+import { usePremium } from '../hooks/usePremium';
+import PaywallOverlay from '../components/PaywallOverlay';
 
 export default function OutgoingDocs() {
   const { user, profile } = useAuth();
+  const { isPremium, loading: premiumLoading } = usePremium();
   const [docs, setDocs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const currentYearBE = new Date().getFullYear() + 543;
@@ -847,6 +850,19 @@ ${userDetail}
     newList[index] = val;
     setAttachmentsList(newList);
   };
+
+  if (premiumLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3 h-full">
+        <Loader2 className="animate-spin text-brand-primary" size={36} />
+        <span className="text-xs font-bold uppercase tracking-wider">กำลังตรวจสอบสิทธิ์การใช้งาน...</span>
+      </div>
+    );
+  }
+
+  if (!isPremium) {
+    return <PaywallOverlay featureName="ทะเบียนหนังสือส่ง" />;
+  }
 
   return (
     <div className="space-y-6">

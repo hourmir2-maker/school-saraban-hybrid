@@ -30,6 +30,8 @@ export default function Settings() {
     line_channel_access_token: '',
     line_group_id: '',
     line_oa_link: '',
+    telegram_bot_token: '',
+    telegram_bot_username: '',
     gemini_api_key: '',
     ai_cowork_api_key: '',
     gas_url: ''
@@ -249,7 +251,9 @@ export default function Settings() {
         .from('schools')
         .update({ 
           gas_url: gas_url ? gas_url.trim() : null,
-          line_channel_access_token: settings.line_channel_access_token || null
+          line_channel_access_token: settings.line_channel_access_token || null,
+          telegram_bot_token: settings.telegram_bot_token || null,
+          telegram_bot_username: settings.telegram_bot_username || null
         })
         .eq('id', activeProfile.id);
         
@@ -431,6 +435,37 @@ export default function Settings() {
                 </div>
               </div>
               <p className="text-[10px] text-slate-400 font-bold ml-1 uppercase">Messaging API จะถูกนำมาใช้แทน LINE Notify ที่กำลังจะปิดตัวลง</p>
+            </div>
+
+            <div className="col-span-full space-y-4 pt-4 border-t border-slate-50">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                <Send size={16} className="text-brand-primary" /> การตั้งค่า Telegram Bot API
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-brand-primary">Telegram Bot Token</label>
+                  <input 
+                    type="password" 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
+                    value={settings.telegram_bot_token || ''}
+                    onChange={e => setSettings({...settings, telegram_bot_token: e.target.value})}
+                    placeholder="ใส่ HTTP API Bot Token จาก BotFather (เช่น 123456789:ABCDefGh...)"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-brand-primary">Telegram Bot Username (ไม่ใส่ @)</label>
+                  <input 
+                    type="text" 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
+                    value={settings.telegram_bot_username || ''}
+                    onChange={e => setSettings({...settings, telegram_bot_username: e.target.value})}
+                    placeholder="เช่น ChabaSchoolBot"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 font-bold ml-1 uppercase leading-relaxed">
+                * ใช้สำหรับการผูกบัญชี Telegram Chat ID เพื่อรับส่งการแจ้งเตือนหนังสือราชการรายบุคคล
+              </p>
             </div>
           </div>
         </div>

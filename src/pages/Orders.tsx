@@ -23,9 +23,12 @@ import {
   Sparkles
 } from 'lucide-react';
 import garuda3cm from '../assets/saraban/garuda-3cm.png';
+import { usePremium } from '../hooks/usePremium';
+import PaywallOverlay from '../components/PaywallOverlay';
 
 export default function Orders() {
   const { user, profile } = useAuth();
+  const { isPremium, loading: premiumLoading } = usePremium();
   const [docs, setDocs] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -839,6 +842,19 @@ ${groups.map(g => `<duty name="${g}">
       show_director_opinion: false
     });
     setSelectedFile(null);
+  }
+
+  if (premiumLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3 h-full">
+        <Loader2 className="animate-spin text-brand-primary" size={36} />
+        <span className="text-xs font-bold uppercase tracking-wider">กำลังตรวจสอบสิทธิ์การใช้งาน...</span>
+      </div>
+    );
+  }
+
+  if (!isPremium) {
+    return <PaywallOverlay featureName="คำสั่ง / แต่งตั้ง" />;
   }
 
   return (

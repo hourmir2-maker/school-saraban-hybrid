@@ -20,9 +20,12 @@ import {
   Bot
 } from 'lucide-react';
 import garuda15mm from '../assets/saraban/garuda-1.5cm.png';
+import { usePremium } from '../hooks/usePremium';
+import PaywallOverlay from '../components/PaywallOverlay';
 
 export default function Memos() {
   const { user, profile } = useAuth();
+  const { isPremium, loading: premiumLoading } = usePremium();
   const [docs, setDocs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const currentYearBE = new Date().getFullYear() + 543;
@@ -620,6 +623,19 @@ export default function Memos() {
     });
     setSelectedFile(null);
     setIsDrafting(false);
+  }
+
+  if (premiumLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3 h-full">
+        <Loader2 className="animate-spin text-brand-primary" size={36} />
+        <span className="text-xs font-bold uppercase tracking-wider">กำลังตรวจสอบสิทธิ์การใช้งาน...</span>
+      </div>
+    );
+  }
+
+  if (!isPremium) {
+    return <PaywallOverlay featureName="บันทึกข้อความ" />;
   }
 
   return (

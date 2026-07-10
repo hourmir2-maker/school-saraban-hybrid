@@ -13,7 +13,8 @@ import {
   CheckCircle2, 
   MessageCircle,
   ExternalLink,
-  Trash2
+  Trash2,
+  Send
 } from 'lucide-react';
 
 export default function Profile() {
@@ -24,6 +25,7 @@ export default function Profile() {
   const [sigPreviewUrl, setSigPreviewUrl] = useState<string | null>(null);
   const [teacherInfo, setTeacherInfo] = useState<any>(null);
   const [lineLink, setLineLink] = useState('');
+  const [telegramBotUsername, setTelegramBotUsername] = useState('');
 
   const fetchTeacherInfo = async (email: string) => {
     if (!email) return;
@@ -48,10 +50,13 @@ export default function Profile() {
     try {
       const { data } = await supabase
         .from('settings')
-        .select('line_oa_link')
+        .select('line_oa_link, telegram_bot_username')
         .eq('school_id', targetSchoolId)
         .maybeSingle();
-      if (data) setLineLink(data.line_oa_link || '');
+      if (data) {
+        setLineLink(data.line_oa_link || '');
+        setTelegramBotUsername(data.telegram_bot_username || '');
+      }
     } catch (err) {
       console.error('Error fetching settings:', err);
     }
@@ -190,6 +195,57 @@ export default function Profile() {
                    >
                      <ExternalLink size={14} /> เพิ่มเพื่อน LINE OA ตอนนี้
                    </a>
+                 )}
+               </div>
+             )}
+          </div>
+
+          {/* Telegram Connection Status */}
+          <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-4">
+             <div className="flex items-center gap-3">
+                <Send size={20} className="text-[#229ED9]" />
+                <p className="text-xs font-black text-slate-800 uppercase tracking-widest">การเชื่อมต่อ Telegram</p>
+             </div>
+             {profile?.telegram_chat_id ? (
+               <div className="space-y-2">
+                 <div className="flex items-center gap-2 text-green-600">
+                   <CheckCircle2 size={14} />
+                   <span className="text-[10px] font-black uppercase">เชื่อมต่อแล้ว</span>
+                 </div>
+                 <p className="text-[9px] text-slate-500 font-bold">
+                   Chat ID: <span className="font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded-sm">{profile.telegram_chat_id}</span>
+                 </p>
+                 <p className="text-[9px] text-slate-400 font-bold leading-relaxed">
+                   ระบบจะส่งการแจ้งเตือนหนังสือราชการและงานมอบหมายตรงเข้าห้องแชทส่วนตัวของคุณครูค่ะ
+                 </p>
+               </div>
+             ) : (
+               <div className="space-y-3">
+                 <p className="text-[10px] text-slate-400 font-bold leading-relaxed italic">
+                   ยังไม่ได้เชื่อมต่อบัญชี Telegram
+                 </p>
+                 {telegramBotUsername ? (
+                   <>
+                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <p className="text-[9px] text-slate-600 font-bold leading-relaxed">
+                          กดลิงก์ด้านล่างเพื่อคุยกับบอทของโรงเรียน และกดปุ่ม <strong>Start</strong> เพื่อยืนยันและผูกบัญชีอัตโนมัติได้ทันทีค่ะ
+                        </p>
+                     </div>
+                     <a 
+                       href={`https://t.me/${telegramBotUsername}?start=auth_${profile?.email ? btoa(profile.email) : ''}`} 
+                       target="_blank" 
+                       rel="noreferrer"
+                       className="w-full py-3 bg-[#229ED9] text-white rounded-xl font-black text-[10px] flex items-center justify-center gap-2 shadow-lg shadow-blue-100 hover:bg-[#1e8bc0] transition-all uppercase tracking-widest"
+                     >
+                       <ExternalLink size={14} /> เชื่อมต่อ Telegram Bot ตอนนี้
+                     </a>
+                   </>
+                 ) : (
+                   <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                      <p className="text-[9px] text-amber-800 font-bold leading-relaxed">
+                        ⚠️ แอดมินของโรงเรียนยังไม่ได้กรอก Telegram Bot Token/Username ในหน้าระบบควบคุม กรุณาแจ้งแอดมินเพื่อเปิดระบบค่ะ
+                      </p>
+                   </div>
                  )}
                </div>
              )}
