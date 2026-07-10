@@ -26,6 +26,45 @@ async function sendTelegramMessage(botToken: string, chatId: number, text: strin
   return resp;
 }
 
+/** เรียกใช้งานโมเดล Gemini API สำหรับโต้ตอบบทสนทนา */
+async function callGemini(system: string, user: string, apiKey: string): Promise<string> {
+  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"];
+  for (const model of models) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: system }]
+          },
+          contents: [{
+            parts: [{ text: user }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048
+          }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          console.log(`[TELEGRAM WEBHOOK] Gemini model ${model} success!`);
+          return text;
+        }
+      } else {
+        const errData = await res.json() as any;
+        console.error(`[TELEGRAM WEBHOOK] Error with model ${model}:`, JSON.stringify(errData));
+      }
+    } catch (e) {
+      console.error(`[TELEGRAM WEBHOOK] Gemini error with model ${model}:`, e);
+    }
+  }
+  return "";
+}
+
 /** สร้าง Supabase client โดยใช้ Service Role Key เพื่อก้าวข้ามสิทธิ์ RLS */
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -72,6 +111,24 @@ export default async function handler(req: any, res: any) {
     }
 
     const botToken = school.telegram_bot_token;
+
+    // ดึงคีย์สำหรับใช้งาน AI (Gemini) จากตาราง settings
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('gemini_api_key, ai_cowork_api_key')
+      .eq('school_id', schoolId)
+      .maybeSingle();
+
+    const rawApiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
+    let apiKey = '';
+    if (rawApiKey) {
+      if (rawApiKey.includes(',')) {
+        const keys = rawApiKey.split(',').map((k: string) => k.trim()).filter(Boolean);
+        apiKey = keys[Math.floor(Math.random() * keys.length)] || '';
+      } else {
+        apiKey = rawApiKey.trim();
+      }
+    }
 
     // --- 3. แกะ payload ที่ Telegram ส่งมา ---
     const update = req.body;
@@ -187,13 +244,8 @@ export default async function handler(req: any, res: any) {
     } else {
       const lowerText = rawText.toLowerCase();
       
-      if (lowerText.includes('โรงเรียน') || lowerText.includes('ชื่อโรงเรียน') || lowerText.includes('ที่ไหน') || lowerText.includes('school')) {
-        await sendTelegramMessage(
-          botToken,
-          chatId,
-          `🏫 บอทสารบรรณนี้ผูกอยู่กับ <b>${school.school_name || 'โรงเรียนหลัก'}</b> ค่ะคุณครู <b>${profileLinked.display_name}</b>`
-        );
-      } else if (lowerText.includes('ใคร') || lowerText.includes('ชื่ออะไร') || lowerText.includes('ข้อมูลฉัน') || lowerText.includes('profile') || lowerText.includes('สิทธิ์')) {
+      // ดักคำสั่งพื้นฐานก่อน หากต้องการใช้ความเร็วสูงหรือไม่ประมวลผลผ่าน AI
+      if (lowerText.includes('ข้อมูลฉัน') || lowerText.includes('profile') || lowerText.includes('สิทธิ์')) {
         let roleName = 'คุณครูทั่วไป';
         if (profileLinked.role === 'admin') roleName = 'ผู้ดูแลระบบ (Admin)';
         else if (profileLinked.role === 'director') roleName = 'ผู้อำนวยการ (Director)';
@@ -203,12 +255,54 @@ export default async function handler(req: any, res: any) {
           chatId,
           `👤 <b>ข้อมูลผู้ใช้งานในระบบ:</b>\n\n• <b>ชื่อแสดง</b>: ${profileLinked.display_name}\n• <b>บทบาท</b>: ${roleName}\n• <b>สังกัด</b>: ${school.school_name || 'โรงเรียนหลัก'}`
         );
+      } else if (apiKey) {
+        // --- เรียกใช้ Jarvis Mode (Gemini AI Conversation) ---
+        try {
+          const systemPrompt = `คุณคือ "น้องชบา AI" ผู้ช่วยอัจฉริยะระบบงานธุรการและสารบรรณของ ${school.school_name || 'โรงเรียน'}
+บทบาทหน้าที่ของคุณ:
+1. ทำการโต้ตอบกับคุณครูอย่างชาญฉลาดและเป็นมิตร มีบุคลิกสุภาพเรียบร้อย มีหางเสียง "ค่ะ/นะคะ"
+2. คล้ายกับบอท J.A.R.V.I.S. ในไอรอนแมน (ผู้ช่วยสมองกลอัจฉริยะ)
+3. ตอบคำถามเกี่ยวกับการใช้งานระบบสารบรรณและธุรการโรงเรียน เช่น อนุมัติเอกสาร เกษียณเอกสาร ดูรายงาน โดยอิงข้อมูลจากชื่อผู้ใช้
+4. สามารถคุยทั่วไปหรือช่วยตอบคำถามความรู้ทางวิชาการและงานธุรการได้ดีเยี่ยม
+
+ข้อมูลคุณครูผู้คุยกับคุณ:
+- ชื่อคุณครู: ${profileLinked.display_name}
+- บทบาทหน้าที่: ${profileLinked.role === 'director' ? 'ผู้อำนวยการโรงเรียน' : profileLinked.role === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'คุณครูผู้ปฏิบัติงาน'}`;
+
+          const aiReply = await callGemini(systemPrompt, rawText, apiKey);
+          if (aiReply) {
+            await sendTelegramMessage(botToken, chatId, aiReply);
+          } else {
+            // กรณี API ผิดพลาด ตกกลับไปใช้ข้อความตอบกลับเริ่มต้น
+            await sendTelegramMessage(
+              botToken,
+              chatId,
+              `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`
+            );
+          }
+        } catch (aiErr) {
+          console.error('[GEMINI TELEGRAM BOT ERROR]', aiErr);
+          await sendTelegramMessage(
+            botToken,
+            chatId,
+            `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`
+          );
+        }
       } else {
-        await sendTelegramMessage(
-          botToken,
-          chatId,
-          `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`
-        );
+        // --- โหมดธรรมดา (เมื่อไม่มี Gemini API Key) ---
+        if (lowerText.includes('โรงเรียน') || lowerText.includes('ชื่อโรงเรียน') || lowerText.includes('ที่ไหน') || lowerText.includes('school')) {
+          await sendTelegramMessage(
+            botToken,
+            chatId,
+            `🏫 บอทสารบรรณนี้ผูกอยู่กับ <b>${school.school_name || 'โรงเรียนหลัก'}</b> ค่ะคุณครู <b>${profileLinked.display_name}</b>`
+          );
+        } else {
+          await sendTelegramMessage(
+            botToken,
+            chatId,
+            `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`
+          );
+        }
       }
     }
 
