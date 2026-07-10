@@ -258,6 +258,12 @@ export default async function handler(req: any, res: any) {
       } else if (apiKey) {
         // --- เรียกใช้ Jarvis Mode (Gemini AI Conversation) ---
         try {
+          // สอบถามจำนวนบุคลากรแบบเรียลไทม์เพื่อแจ้งให้ AI ทราบ
+          const { count: staffCount } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('school_id', schoolId);
+
           const systemPrompt = `คุณคือ "น้องชบา AI" ผู้ช่วยอัจฉริยะระบบงานธุรการและสารบรรณของ ${school.school_name || 'โรงเรียน'}
 บทบาทหน้าที่ของคุณ:
 1. ทำการโต้ตอบกับคุณครูอย่างชาญฉลาดและเป็นมิตร มีบุคลิกสุภาพเรียบร้อย มีหางเสียง "ค่ะ/นะคะ"
@@ -267,7 +273,8 @@ export default async function handler(req: any, res: any) {
 
 ข้อมูลคุณครูผู้คุยกับคุณ:
 - ชื่อคุณครู: ${profileLinked.display_name}
-- บทบาทหน้าที่: ${profileLinked.role === 'director' ? 'ผู้อำนวยการโรงเรียน' : profileLinked.role === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'คุณครูผู้ปฏิบัติงาน'}`;
+- บทบาทหน้าที่: ${profileLinked.role === 'director' ? 'ผู้อำนวยการโรงเรียน' : profileLinked.role === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'คุณครูผู้ปฏิบัติงาน'}
+- จำนวนบุคลากรทั้งหมดในระบบของโรงเรียนในขณะนี้: ${staffCount || 0} คน`;
 
           const aiReply = await callGemini(systemPrompt, rawText, apiKey);
           if (aiReply) {
