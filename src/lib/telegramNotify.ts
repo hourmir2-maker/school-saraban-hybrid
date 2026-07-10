@@ -46,7 +46,23 @@ export async function sendTelegramNotification(message: string, specificToId?: s
       .eq('school_id', activeSchoolId)
       .maybeSingle();
 
-    const targetId = specificToId || settings?.telegram_group_id;
+    let targetId = specificToId || settings?.telegram_group_id;
+    if (!targetId) {
+      // หากไม่ได้ตั้งค่ากลุ่มกลาง ลองตรวจสอบว่า ผอ. (director) ผูก Telegram ส่วนบุคคลไว้หรือยัง
+      const { data: director } = await supabase
+        .from('profiles')
+        .select('telegram_chat_id')
+        .eq('role', 'director')
+        .eq('school_id', activeSchoolId)
+        .not('telegram_chat_id', 'is', null)
+        .maybeSingle();
+
+      if (director?.telegram_chat_id) {
+        targetId = director.telegram_chat_id;
+        console.log('[TELEGRAM NOTIFY] No group ID found, falling back to Director personal chat:', targetId);
+      }
+    }
+
     if (!targetId) {
       console.warn('[TELEGRAM NOTIFY] Skipping send: No recipient chat_id or group_id found.');
       return;
