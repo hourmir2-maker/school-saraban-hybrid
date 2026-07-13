@@ -112,11 +112,41 @@ function extractDocSearchWord(message: string): string {
 }
 
 /** Smart Data Fetch — ดึงข้อมูลจริงจากฐานข้อมูลตามหมวดคำถาม (เทียบเท่า LINE Bot) */
-async function smartFetchContext(message: string, currentYear: string, supabase: any, schoolId: string): Promise<string> {
+async function smartFetchContext(message: string, currentYear: string, supabase: any, schoolId: string, profileLinked?: any): Promise<string> {
   const msg = message.toLowerCase();
   const targetClass = extractClassLevel(message);
 
   const rules = [
+    {
+      keys: ['ค้างเกษียณ', 'รอเกษียณ', 'ยังไม่ได้เกษียณ', 'ยังไม่เกษียณ', 'ผอ. ยังไม่ได้ทำ', 'ผอ. ยังไม่สั่ง', 'ค้างผอ', 'หนังสือค้าง'],
+      fetch: async () => {
+        let query = supabase.from('incoming_docs').select('doc_number, subject, from_agency, doc_date, urgency, status');
+        if (schoolId) query = query.eq('school_id', schoolId);
+        query = query.eq('status', 'pending');
+        const { data } = await query.order('doc_date', { ascending: false }).limit(20);
+        return `ข้อมูลหนังสือรับที่ยังค้างเสนอผู้อำนวยการเกษียณสั่งการ (สถานะ pending): ${JSON.stringify(data)}`;
+      }
+    },
+    {
+      keys: ['งานค้าง', 'งานค้างของฉัน', 'งานของฉัน', 'งานที่ยังไม่ได้ส่ง', 'ยังไม่ได้รายงาน', 'งานที่มอบหมายค้าง', 'งานมอบหมายค้าง'],
+      fetch: async () => {
+        if (!profileLinked || !profileLinked.email) return 'ไม่มีข้อมูลโปรไฟล์ผู้ใช้สำหรับสืบค้นงานค้างส่วนบุคคล';
+        const { data: teacher } = await supabase
+          .from('teachers')
+          .select('id')
+          .eq('email', profileLinked.email)
+          .maybeSingle();
+        if (!teacher) return `ไม่พบข้อมูลคุณครูในตารางระบบโรงเรียนสำหรับอีเมล: ${profileLinked.email}`;
+        
+        const { data: pendingAssigns } = await supabase
+          .from('doc_assignments')
+          .select('*, incoming_docs(subject, doc_number)')
+          .eq('assignee_id', teacher.id)
+          .in('status', ['pending', 'acknowledged'])
+          .order('created_at', { ascending: false });
+        return `รายการงานมอบหมายที่ยังค้างการรายงานผล/ครูยังทำไม่เสร็จ (สถานะ pending หรือ acknowledged) ของครูผู้สอบถาม: ${JSON.stringify(pendingAssigns)}`;
+      }
+    },
     {
       keys: ['ครู', 'คุณครู', 'บุคลากร', 'ผู้สอน', 'เวร', 'เวรยาม', 'อีเมล', 'อีเมล์', 'เบอร์โทร', 'เบอร์ติดต่อ', 'มีใครบ้าง', 'ใครบ้าง'],
       fetch: async () => {
@@ -619,13 +649,23 @@ async function executeDocAssignment(
       const teacherReplyMarkup = {
         inline_keyboard: [
           [
+            { text: '✅ รับทราบงาน', callback_data: `action=acknowledge&id=${assignment.id}` }
+          ],
+          [
             { text: '📢 ประชาสัมพันธ์ลงกลุ่มกลาง', callback_data: `action=bc_grp&id=${assignment.id}` }
           ]
         ]
       };
       await sendTelegramMessage(botToken, parseInt(teacherProfile.telegram_chat_id), personalMsg, teacherReplyMarkup);
     } else {
-      await sendTelegramMessage(botToken, chatId, `📢 <b>แจ้งมอบหมายงานใหม่</b>\n\n• <b>ถึงคุณครู</b>: ${teacherName}\n• <b>เรื่อง</b>: ${doc.subject}\n• <b>คำสั่งการ</b>: ${instruction}\n\n📄 <a href="${finalFileUrl}">เปิดดูเอกสารสั่งการ</a>`);
+      const teacherReplyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '✅ รับทราบงาน', callback_data: `action=acknowledge&id=${assignment.id}` }
+          ]
+        ]
+      };
+      await sendTelegramMessage(botToken, chatId, `📢 <b>แจ้งมอบหมายงานใหม่</b>\n\n• <b>ถึงคุณครู</b>: ${teacherName}\n• <b>เรื่อง</b>: ${doc.subject}\n• <b>คำสั่งการ</b>: ${instruction}\n\n📄 <a href="${finalFileUrl}">เปิดดูเอกสารสั่งการ</a>`, teacherReplyMarkup);
     }
 
   } catch (err: any) {
@@ -647,6 +687,66 @@ function getSupabase() {
       autoRefreshToken: false
     }
   });
+}
+
+/** ตอบรับ Callback Query เพื่อหยุดปุ่มหมุนค้าง และส่งข้อความ Alert ได้ */
+async function answerCallbackQuery(botToken: string, callbackQueryId: string, text?: string, showAlert: boolean = false) {
+  const url = `https://api.telegram.org/bot${botToken}/answerCallbackQuery`;
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      text: text,
+      show_alert: showAlert
+    }),
+  });
+}
+
+/** แก้ไขปุ่มของข้อความเดิมบน Telegram */
+async function editTelegramMessageMarkup(botToken: string, chatId: number, messageId: number, replyMarkup: any) {
+  const url = `https://api.telegram.org/bot${botToken}/editMessageReplyMarkup`;
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: replyMarkup
+    }),
+  });
+}
+
+/** ดึงปุ่ม Markup ตามสถานะงานที่ส่งมอบ เพื่อป้องกันการกดรับทราบ/รายงานซ้ำ */
+function getUpdatedMarkupForStatus(status: string, assignmentId: string) {
+  if (status === 'pending') {
+    return {
+      inline_keyboard: [
+        [{ text: '✅ รับทราบงาน', callback_data: `action=acknowledge&id=${assignmentId}` }],
+        [{ text: '📢 ประชาสัมพันธ์ลงกลุ่มกลาง', callback_data: `action=bc_grp&id=${assignmentId}` }]
+      ]
+    };
+  } else if (status === 'acknowledged') {
+    return {
+      inline_keyboard: [
+        [{ text: '📝 รายงานผลการปฏิบัติงาน', callback_data: `action=report&id=${assignmentId}` }],
+        [{ text: '📢 ประชาสัมพันธ์ลงกลุ่มกลาง', callback_data: `action=bc_grp&id=${assignmentId}` }]
+      ]
+    };
+  } else if (status === 'completed') {
+    return {
+      inline_keyboard: [
+        [{ text: '📊 รายงานผลแล้ว (รอ ผอ. ตรวจ)', callback_data: `action=noop` }]
+      ]
+    };
+  } else if (status === 'closed') {
+    return {
+      inline_keyboard: [
+        [{ text: '🔒 งานนี้เสร็จสิ้นแล้ว', callback_data: `action=noop` }]
+      ]
+    };
+  }
+  return { inline_keyboard: [] };
 }
 
 export default async function handler(req: any, res: any) {
@@ -707,13 +807,6 @@ export default async function handler(req: any, res: any) {
 
     // จัดการ callback_query (ปุ่มกดแบบ Inline Keyboard)
     if (callbackQuery) {
-      // 1. ตอบรับ callback query ทันทีป้องกันหน้าจอปุ่มค้างหมุน
-      await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callback_query_id: callbackQuery.id }),
-      });
-
       const callbackData = callbackQuery.data;
       const callbackChatId = callbackQuery.message?.chat?.id;
       const userTelegramId = callbackQuery.from?.id;
@@ -725,7 +818,7 @@ export default async function handler(req: any, res: any) {
       // 2. ดึงข้อมูล Profile ของผู้กดปุ่มเพื่อตรวจสอบสิทธิ์
       const { data: profileLinked, error: linkErr } = await supabase
         .from('profiles')
-        .select('id, display_name, role, signature_url')
+        .select('id, display_name, role, signature_url, email')
         .eq('telegram_chat_id', String(userTelegramId))
         .eq('school_id', schoolId)
         .maybeSingle();
@@ -739,23 +832,45 @@ export default async function handler(req: any, res: any) {
       const params = new URLSearchParams(callbackData);
       const action = params.get('action');
 
+      if (action === 'noop') {
+        await answerCallbackQuery(botToken, callbackQuery.id);
+        return res.status(200).json({ ok: true });
+      }
+
       if (action === 'start_assign') {
         const docId = params.get('id');
         if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
-          await sendTelegramMessage(botToken, callbackChatId, '❌ ขออภัยค่ะ ปุ่มนี้สำหรับผู้อำนวยการ/ผู้รักษาการดำเนินการเกษียณสั่งการเท่านั้นนะคะ 🌸');
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ ขออภัยค่ะ ปุ่มนี้สำหรับผู้อำนวยการ/ผู้รักษาการเท่านั้นค่ะ 🌸', true);
           return res.status(200).json({ ok: true });
         }
 
         const { data: doc } = await supabase
           .from('incoming_docs')
-          .select('subject')
+          .select('subject, status')
           .eq('id', docId)
           .single();
 
         if (!doc) {
-          await sendTelegramMessage(botToken, callbackChatId, '❌ ไม่พบข้อมูลหนังสือรับชิ้นนี้ในระบบค่ะ');
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ ไม่พบข้อมูลหนังสือรับชิ้นนี้ในระบบค่ะ', true);
           return res.status(200).json({ ok: true });
         }
+
+        // ป้องกันการทำซ้ำในขั้นตอนเกษียณหนังสือของ ผอ.
+        if (doc.status && doc.status !== 'pending') {
+          await answerCallbackQuery(botToken, callbackQuery.id, '⚠️ หนังสือรับฉบับนี้ได้รับการเกษียณสั่งการไปเรียบร้อยแล้วค่ะ', true);
+
+          const completedMarkup = {
+            inline_keyboard: [
+              [
+                { text: '🔒 เกษียณสั่งการแล้ว', callback_data: 'action=noop' }
+              ]
+            ]
+          };
+          await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, completedMarkup);
+          return res.status(200).json({ ok: true });
+        }
+
+        await answerCallbackQuery(botToken, callbackQuery.id);
 
         // ล้างสถานะเก่าของผู้ใช้นี้ออกก่อน จากนั้นเก็บ doc_id ลงใน Action State
         await supabase.from('line_action_states').delete().eq('user_id', `telegram:${userTelegramId}`);
@@ -807,6 +922,7 @@ export default async function handler(req: any, res: any) {
         );
 
       } else if (action === 'assign') {
+        await answerCallbackQuery(botToken, callbackQuery.id);
         const teacherId = params.get('t_id') || '';
 
         if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
@@ -853,6 +969,7 @@ export default async function handler(req: any, res: any) {
         );
 
       } else if (action === 'confirm_assign') {
+        await answerCallbackQuery(botToken, callbackQuery.id);
         const insCode = params.get('ins') || '1';
 
         if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
@@ -897,6 +1014,7 @@ export default async function handler(req: any, res: any) {
           await executeDocAssignment(docId, teacherId, instruction, botToken, callbackChatId, profileLinked, supabase);
         }
       } else if (action === 'bc_grp') {
+        await answerCallbackQuery(botToken, callbackQuery.id);
         const assignId = params.get('id');
         const { data: assign } = await supabase
           .from('doc_assignments')
@@ -921,6 +1039,262 @@ export default async function handler(req: any, res: any) {
             await sendTelegramMessage(botToken, callbackChatId, '⚠️ ไม่พบข้อมูลกลุ่มกลางในตารางตั้งค่าค่ะ กรุณาตั้งค่ากลุ่มกลางก่อนนะคะ');
           }
         }
+      } else if (action === 'acknowledge') {
+        const assignId = params.get('id');
+        const { data: assign, error: assignErr } = await supabase
+          .from('doc_assignments')
+          .select('*, incoming_docs(subject, school_id)')
+          .eq('id', assignId)
+          .single();
+
+        if (assignErr || !assign) {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ ไม่พบข้อมูลการมอบหมายงานนี้ในระบบค่ะ', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        // ป้องกันการทำซ้ำ
+        if (assign.status !== 'pending') {
+          let statusText = 'ได้รับทราบงานนี้ไปแล้ว';
+          if (assign.status === 'completed') statusText = 'รายงานผลงานนี้ไปแล้ว';
+          if (assign.status === 'closed') statusText = 'งานนี้ปิดเรียบร้อยแล้ว';
+          
+          await answerCallbackQuery(botToken, callbackQuery.id, `⚠️ คุณครู${statusText}ค่ะ`, true);
+
+          const updatedMarkup = getUpdatedMarkupForStatus(assign.status, assignId || '');
+          await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, updatedMarkup);
+          return res.status(200).json({ ok: true });
+        }
+
+        // อัปเดตสถานะเป็น acknowledged
+        await supabase
+          .from('doc_assignments')
+          .update({ status: 'acknowledged' })
+          .eq('id', assignId);
+
+        await answerCallbackQuery(botToken, callbackQuery.id, '✅ รับทราบงานเรียบร้อยแล้วค่ะ');
+
+        const docSubject = assign.incoming_docs?.subject || 'หนังสือสั่งการ';
+        const teacherName = profileLinked.display_name || 'คุณครู';
+
+        // ตอบกลับครู (ผู้กด) - แก้ไขปุ่มเดิมของข้อความ
+        const teacherReplyMarkup = {
+          inline_keyboard: [
+            [
+              { text: '📝 รายงานผลการปฏิบัติงาน', callback_data: `action=report&id=${assignId}` }
+            ],
+            [
+              { text: '📢 ประชาสัมพันธ์ลงกลุ่มกลาง', callback_data: `action=bc_grp&id=${assignId}` }
+            ]
+          ]
+        };
+        await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, teacherReplyMarkup);
+
+        await sendTelegramMessage(
+          botToken,
+          callbackChatId,
+          `✅ บันทึกการรับทราบงานเรื่อง "${docSubject}" เรียบร้อยแล้วค่ะ\nคุณครูสามารถกดรายงานผลการปฏิบัติงานจากปุ่มด้านบนได้เลยนะคะเมื่อดำเนินงานเสร็จ 🌸✨`
+        );
+
+        const sId = assign.incoming_docs?.school_id || schoolId;
+
+        // แจ้งเตือนในกลุ่มกลาง Telegram
+        const { data: settings } = await supabase
+          .from('settings')
+          .select('telegram_group_id')
+          .eq('school_id', sId)
+          .maybeSingle();
+
+        if (settings?.telegram_group_id) {
+          await sendTelegramMessage(
+            botToken,
+            settings.telegram_group_id,
+            `👍 คุณครู <b>${teacherName}</b> กดรับทราบงานเรื่อง <b>"${docSubject}"</b> เรียบร้อยแล้วค่ะ 🌸`
+          );
+        }
+
+        // แจ้งเตือน ผอ. (หา ผอ. ของโรงเรียนนี้ที่มี telegram_chat_id)
+        const { data: directors } = await supabase
+          .from('profiles')
+          .select('telegram_chat_id')
+          .eq('role', 'director')
+          .eq('school_id', sId);
+
+        if (directors) {
+          for (const dir of directors) {
+            if (dir.telegram_chat_id) {
+              await sendTelegramMessage(
+                botToken,
+                parseInt(dir.telegram_chat_id),
+                `👍 คุณครู <b>${teacherName}</b> กดรับทราบงานเรื่อง <b>"${docSubject}"</b> แล้วค่ะ`
+              );
+            }
+          }
+        }
+
+      } else if (action === 'report') {
+        const assignId = params.get('id');
+        const { data: assign, error: assignErr } = await supabase
+          .from('doc_assignments')
+          .select('*, incoming_docs(subject)')
+          .eq('id', assignId)
+          .single();
+
+        if (assignErr || !assign) {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ ไม่พบข้อมูลการมอบหมายงานในระบบค่ะ', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        // ป้องกันการทำซ้ำ
+        if (assign.status === 'completed' || assign.status === 'closed') {
+          let statusText = 'เคยรายงานผลงานนี้ไปแล้ว';
+          if (assign.status === 'closed') statusText = 'งานนี้ปิดเรียบร้อยแล้ว';
+          
+          await answerCallbackQuery(botToken, callbackQuery.id, `⚠️ ${statusText}ค่ะ`, true);
+
+          const updatedMarkup = getUpdatedMarkupForStatus(assign.status, assignId || '');
+          await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, updatedMarkup);
+          return res.status(200).json({ ok: true });
+        }
+
+        await answerCallbackQuery(botToken, callbackQuery.id);
+
+        // ล้างสถานะเก่าของผู้ใช้นี้ออกก่อน จากนั้นเก็บ state
+        await supabase.from('line_action_states').delete().eq('user_id', `telegram:${userTelegramId}`);
+        await supabase.from('line_action_states').insert([{
+          user_id: `telegram:${userTelegramId}`,
+          action: 'awaiting_report_text',
+          context: { assignment_id: assignId },
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+        }]);
+
+        await sendTelegramMessage(
+          botToken,
+          callbackChatId,
+          `✍️ กรุณาพิมพ์รายงานสรุปผลการดำเนินงานสำหรับเรื่อง <b>"${assign.incoming_docs?.subject}"</b> ส่งเข้ามาในห้องแชทนี้ได้เลยค่ะ ชบาจะนำไปบันทึกรายงานเสนอ ผอ. ทันที 🌸`
+        );
+
+      } else if (action === 'close') {
+        const assignId = params.get('id');
+        if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ สิทธิ์การปิดงานเป็นของผู้อำนวยการเท่านั้นค่ะ 🌸', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        const { data: assign, error: assignErr } = await supabase
+          .from('doc_assignments')
+          .select('*, incoming_docs(subject, school_id)')
+          .eq('id', assignId)
+          .single();
+
+        if (assignErr || !assign) {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ ไม่พบชิ้นงานในระบบค่ะ', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        // ป้องกันการทำซ้ำ
+        if (assign.status === 'closed') {
+          await answerCallbackQuery(botToken, callbackQuery.id, '⚠️ งานนี้ได้รับการปิดงานไปเรียบร้อยแล้วค่ะ', true);
+          
+          const updatedMarkup = getUpdatedMarkupForStatus('closed', assignId || '');
+          await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, updatedMarkup);
+          return res.status(200).json({ ok: true });
+        }
+
+        // อัปเดตสถานะเป็น closed และใส่เวลาปิด
+        await supabase
+          .from('doc_assignments')
+          .update({ status: 'closed', closed_at: new Date().toISOString() })
+          .eq('id', assignId);
+
+        await answerCallbackQuery(botToken, callbackQuery.id, '✅ ดำเนินการทราบ/ปิดงานเรียบร้อยแล้วค่ะ');
+
+        // อัปเดตปุ่มเดิมของ ผอ.
+        const closedReplyMarkup = {
+          inline_keyboard: [
+            [
+              { text: '🔒 งานนี้เสร็จสิ้นแล้ว (ทราบ/ปิดงาน)', callback_data: `action=noop` }
+            ]
+          ]
+        };
+        await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, closedReplyMarkup);
+
+        await sendTelegramMessage(botToken, callbackChatId, `✅ ได้ดำเนินการ "ทราบ/ปิดงาน" และส่งแจ้งคุณครูเรียบร้อยแล้วค่ะ 🌸`);
+
+        // ค้นหาคุณครูและส่งแจ้งเตือน
+        const { data: teacher } = await supabase
+          .from('teachers')
+          .select('email, prefix, first_name, last_name')
+          .eq('id', assign.assignee_id)
+          .maybeSingle();
+
+        if (teacher) {
+          const { data: teacherProfile } = await supabase
+            .from('profiles')
+            .select('telegram_chat_id')
+            .eq('email', teacher.email)
+            .maybeSingle();
+
+          if (teacherProfile?.telegram_chat_id) {
+            await sendTelegramMessage(
+              botToken,
+              parseInt(teacherProfile.telegram_chat_id),
+              `🎉 ผู้อำนวยการได้รับทราบผลรายงานและสั่งการ "ทราบ/ปิดงาน" สำหรับงานเรื่อง <b>"${assign.incoming_docs?.subject}"</b> แล้วค่ะ ขอบคุณในการดำเนินงานและปิดจ๊อบนะคะคุณครู 🌸⚡`
+            );
+          }
+        }
+
+      } else if (action === 'feedback') {
+        const assignId = params.get('id');
+        if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ สิทธิ์การสั่งเพิ่มเติมเป็นของผู้อำนวยการเท่านั้นค่ะ 🌸', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        const { data: assign, error: assignErr } = await supabase
+          .from('doc_assignments')
+          .select('status')
+          .eq('id', assignId)
+          .single();
+
+        if (assignErr || !assign) {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ ไม่พบข้อมูลการมอบหมายงานในระบบค่ะ', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        if (assign.status === 'closed') {
+          await answerCallbackQuery(botToken, callbackQuery.id, '⚠️ ไม่สามารถสั่งการเพิ่มเติมได้เนื่องจากปิดงานไปแล้วค่ะ', true);
+          
+          const updatedMarkup = getUpdatedMarkupForStatus('closed', assignId || '');
+          await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, updatedMarkup);
+          return res.status(200).json({ ok: true });
+        }
+
+        await answerCallbackQuery(botToken, callbackQuery.id);
+
+        // แก้ปุ่ม ผอ. ให้เปลี่ยนเป็นปุ่มพิมพ์คำสั่งเพิ่มเติม
+        const feedbackReplyMarkup = {
+          inline_keyboard: [
+            [
+              { text: '💬 อยู่ระหว่างพิมพ์คำสั่งเพิ่มเติม...', callback_data: `action=noop` }
+            ]
+          ]
+        };
+        await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, feedbackReplyMarkup);
+
+        // ล้างสถานะเก่าของผู้ใช้นี้ออกก่อน จากนั้นเก็บ state
+        await supabase.from('line_action_states').delete().eq('user_id', `telegram:${userTelegramId}`);
+        await supabase.from('line_action_states').insert([{
+          user_id: `telegram:${userTelegramId}`,
+          action: 'awaiting_feedback_text',
+          context: { assignment_id: assignId },
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+        }]);
+
+        await sendTelegramMessage(
+          botToken,
+          callbackChatId,
+          `💬 กรุณาพิมพ์ข้อแนะนำหรือคำสั่งการเพิ่มเติมที่ต้องการให้คุณครูดำเนินการแก้ไข/ทำเพิ่มส่งมาได้เลยค่ะ 🌸`
+        );
       }
 
       return res.status(200).json({ ok: true });
@@ -1012,7 +1386,7 @@ export default async function handler(req: any, res: any) {
     // ตรวจสอบว่าแชทไอดีนี้ผูกบัญชีไว้กับโรงเรียนนี้แล้วหรือยัง
     const { data: profileLinked, error: linkErr } = await supabase
       .from('profiles')
-      .select('id, display_name, role')
+      .select('id, display_name, role, email')
       .eq('telegram_chat_id', String(userTelegramId))
       .eq('school_id', schoolId)
       .maybeSingle();
@@ -1042,6 +1416,136 @@ export default async function handler(req: any, res: any) {
         await supabase.from('line_action_states').delete().eq('id', activeState.id);
         await executeDocAssignment(doc_id, teacher_id, rawText, botToken, chatId, profileLinked, supabase);
         return res.status(200).json({ ok: true });
+      } else if (activeState.action === 'awaiting_report_text') {
+        const { assignment_id } = activeState.context || {};
+        await supabase.from('line_action_states').delete().eq('id', activeState.id);
+
+        const { data: assign, error: assignErr } = await supabase
+          .from('doc_assignments')
+          .select('*, incoming_docs(subject, school_id)')
+          .eq('id', assignment_id)
+          .single();
+
+        if (assignErr || !assign) {
+          await sendTelegramMessage(botToken, chatId, '❌ ไม่พบข้อมูลการมอบหมายงานนี้ในระบบค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        const sId = assign.incoming_docs?.school_id || schoolId;
+
+        // อัปเดตสถานะเป็น completed และบันทึกรายงานผล
+        await supabase
+          .from('doc_assignments')
+          .update({
+            status: 'completed',
+            staff_report: rawText,
+            reported_at: new Date().toISOString()
+          })
+          .eq('id', assignment_id);
+
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          `✅ บันทึกคำรายงานผลและส่งมอบงานเรื่อง <b>"${assign.incoming_docs?.subject}"</b> เสนอผู้อำนวยการเรียบร้อยแล้วค่ะ ขอบคุณมากนะคะคุณครู 🌸`
+        );
+
+        // ค้นหา ผอ. โรงเรียนเพื่อส่งรายงาน
+        const { data: directors } = await supabase
+          .from('profiles')
+          .select('telegram_chat_id')
+          .eq('role', 'director')
+          .eq('school_id', sId);
+
+        const docSubject = assign.incoming_docs?.subject || 'งานที่มอบหมาย';
+        const teacherName = profileLinked.display_name || 'คุณครู';
+        const dirMessage = `📊 คุณครู <b>${teacherName}</b> ได้รายงานผลงาน\n<b>เรื่อง</b>: ${docSubject}\n\n<b>ผลงาน</b>: "${rawText}"`;
+
+        const dirReplyMarkup = {
+          inline_keyboard: [
+            [
+              { text: '✅ ทราบ/ปิดงาน', callback_data: `action=close&id=${assignment_id}` },
+              { text: '💬 สั่งเพิ่มเติม', callback_data: `action=feedback&id=${assignment_id}` }
+            ]
+          ]
+        };
+
+        if (directors) {
+          for (const dir of directors) {
+            if (dir.telegram_chat_id) {
+              await sendTelegramMessage(
+                botToken,
+                parseInt(dir.telegram_chat_id),
+                dirMessage,
+                dirReplyMarkup
+              );
+            }
+          }
+        }
+        return res.status(200).json({ ok: true });
+
+      } else if (activeState.action === 'awaiting_feedback_text') {
+        const { assignment_id } = activeState.context || {};
+        await supabase.from('line_action_states').delete().eq('id', activeState.id);
+
+        const { data: assign, error: assignErr } = await supabase
+          .from('doc_assignments')
+          .select('*, incoming_docs(subject, school_id), assignee_id')
+          .eq('id', assignment_id)
+          .single();
+
+        if (assignErr || !assign) {
+          await sendTelegramMessage(botToken, chatId, '❌ ไม่พบข้อมูลการมอบหมายงานนี้ในระบบค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        const sId = assign.incoming_docs?.school_id || schoolId;
+
+        // อัปเดต feedback ผอ. และถอยสถานะกลับไปเป็น acknowledged
+        await supabase
+          .from('doc_assignments')
+          .update({
+            status: 'acknowledged',
+            director_feedback: rawText
+          })
+          .eq('id', assignment_id);
+
+        await sendTelegramMessage(botToken, chatId, `✅ บันทึกคำสั่งการเพิ่มเติมเรียบร้อยและส่งแจ้งคุณครูเรียบร้อยแล้วค่ะ 🌸`);
+
+        // ค้นหาคุณครูและส่งแจ้งเตือน
+        const { data: teacher } = await supabase
+          .from('teachers')
+          .select('email, prefix, first_name, last_name')
+          .eq('id', assign.assignee_id)
+          .maybeSingle();
+
+        if (teacher) {
+          const { data: teacherProfile } = await supabase
+            .from('profiles')
+            .select('telegram_chat_id')
+            .eq('email', teacher.email)
+            .maybeSingle();
+
+          if (teacherProfile?.telegram_chat_id) {
+            const docSubject = assign.incoming_docs?.subject || 'งานที่มอบหมาย';
+            const teacherMsg = `📌 ผอ. มีคำแนะนำ/สั่งการเพิ่มเติม\n<b>เรื่อง</b>: ${docSubject}\n\n<b>คำสั่ง ผอ.</b>: "${rawText}"\n\nรบกวนคุณครูดำเนินการเพิ่มเติม และรายงานผลส่งกลับอีกครั้งเมื่อเสร็จงานนะคะ 🌸`;
+            
+            const teacherReplyMarkup = {
+              inline_keyboard: [
+                [
+                  { text: '📝 รายงานผลใหม่', callback_data: `action=report&id=${assignment_id}` }
+                ]
+              ]
+            };
+
+            await sendTelegramMessage(
+              botToken,
+              parseInt(teacherProfile.telegram_chat_id),
+              teacherMsg,
+              teacherReplyMarkup
+            );
+          }
+        }
+        return res.status(200).json({ ok: true });
       }
     }
 
@@ -1060,7 +1564,7 @@ export default async function handler(req: any, res: any) {
 
     try {
       // 1. Smart Data Fetch — ดึงข้อมูลจริงจากฐานข้อมูลตามหมวดคำถาม
-      const contextData = await smartFetchContext(cleanedText, currentYear, supabase, schoolId);
+      const contextData = await smartFetchContext(cleanedText, currentYear, supabase, schoolId, profileLinked);
       console.log(`[TELEGRAM WEBHOOK] Context Data size: ${contextData.length} chars`);
 
       // 2. นับจำนวนบุคลากร
