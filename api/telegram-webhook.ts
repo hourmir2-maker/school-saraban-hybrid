@@ -128,7 +128,7 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       }
     },
     {
-      keys: ['งานค้าง', 'งานค้างของฉัน', 'งานของฉัน', 'งานที่ยังไม่ได้ส่ง', 'ยังไม่ได้รายงาน', 'งานที่มอบหมายค้าง', 'งานมอบหมายค้าง'],
+      keys: ['งานค้าง', 'งานค้างของฉัน', 'งานของฉัน', 'งานที่ยังไม่ได้ส่ง', 'ยังไม่ได้รายงาน', 'งานที่มอบหมายค้าง', 'งานมอบหมายค้าง', 'รายงานผล', 'ส่งรายงาน', 'ส่งงาน'],
       fetch: async () => {
         if (!profileLinked || !profileLinked.email) return 'ไม่มีข้อมูลโปรไฟล์ผู้ใช้สำหรับสืบค้นงานค้างส่วนบุคคล';
         const { data: teacher } = await supabase
@@ -1695,6 +1695,43 @@ export default async function handler(req: any, res: any) {
                           { text: `✍️ เกษียณสั่งการหนังสือ เลขที่ ${docNum || ''}`, callback_data: `action=start_assign&id=${docId}` }
                         ]);
                       }
+                    }
+                  }
+                }
+                
+                if (inlineKeyboard.length > 0) {
+                  replyMarkup = { inline_keyboard: inlineKeyboard };
+                }
+              }
+              
+              // 2. ค้นหา ID ของการมอบหมายงาน (doc_assignments) ใน contextData เพื่อสร้างปุ่มรายงานผล (เฉพาะงานของครูท่านนั้น)
+              const assignMatches = contextData.match(/"id":"([a-f0-9-]{36})".*?"status":"(acknowledged|pending)"/g);
+              if (assignMatches) {
+                const inlineKeyboard: any[] = replyMarkup?.inline_keyboard || [];
+                const addedAssignIds = new Set<string>();
+                
+                for (const match of assignMatches) {
+                  const idMatch = match.match(/"id":"([a-f0-9-]{36})"/);
+                  if (idMatch && idMatch[1] && !addedAssignIds.has(idMatch[1])) {
+                    const assignId = idMatch[1];
+                    addedAssignIds.add(assignId);
+                    
+                    const assignBlockMatch = contextData.match(new RegExp(`\\{[^\\{]*?"id":"${assignId}".*?\\}`));
+                    if (assignBlockMatch && assignBlockMatch[0]) {
+                      let docNum = '';
+                      const docBlockMatch = assignBlockMatch[0].match(/"incoming_docs":\{.*?\}/);
+                      if (docBlockMatch && docBlockMatch[0]) {
+                        const numMatch = docBlockMatch[0].match(/"doc_number":"(.*?)"/);
+                        if (numMatch && numMatch[1]) docNum = numMatch[1];
+                      }
+                      if (!docNum) {
+                        const numDirectMatch = assignBlockMatch[0].match(/"doc_number":"(.*?)"/);
+                        if (numDirectMatch && numDirectMatch[1]) docNum = numDirectMatch[1];
+                      }
+                      
+                      inlineKeyboard.push([
+                        { text: `📝 รายงานผลงาน เลขที่ ${docNum || ''}`, callback_data: `action=report&id=${assignId}` }
+                      ]);
                     }
                   }
                 }
