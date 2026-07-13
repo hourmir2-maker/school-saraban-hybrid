@@ -1635,6 +1635,7 @@ export default async function handler(req: any, res: any) {
 
             if (finalAnswer) {
               let replyMarkup: any = undefined;
+              const isReportIntent = ['งานค้าง', 'งานของฉัน', 'ยังไม่ได้ส่ง', 'ยังไม่ได้รายงาน', 'งานที่มอบหมายค้าง', 'รายงานผล', 'ส่งรายงาน', 'ส่งงาน'].some(k => msg.includes(k));
               
               // ค้นหา ID หนังสือรับทั้งหมดใน contextData (สกัดแบบอิสระ ไม่จำกัดเฉพาะ pending เพื่อให้บริการปุ่มดูเอกสารแก่ครูทุกคน)
               const docMatches = contextData.match(/"id":"([a-f0-9-]{36})"/g);
@@ -1689,8 +1690,8 @@ export default async function handler(req: any, res: any) {
                         inlineKeyboard.push(rowButtons);
                       }
                       
-                      // 2. ถ้าผู้ใช้มีสิทธิ์เป็น ผอ./แอดมิน และหนังสือยังไม่ได้เกษียณ (status === 'pending') -> แนบปุ่มเกษียณสั่งการเพิ่มขึ้นมาในแถวถัดไป
-                      if ((profileLinked.role === 'director' || profileLinked.role === 'admin') && status === 'pending') {
+                      // 2. ถ้าผู้ใช้มีสิทธิ์เป็น ผอ./แอดมิน และหนังสือยังไม่ได้เกษียณ (status === 'pending') และไม่ได้ต้องการรายงานผล -> แนบปุ่มเกษียณสั่งการเพิ่มขึ้นมาในแถวถัดไป
+                      if ((profileLinked.role === 'director' || profileLinked.role === 'admin') && status === 'pending' && !isReportIntent) {
                         inlineKeyboard.push([
                           { text: `✍️ เกษียณสั่งการหนังสือ เลขที่ ${docNum || ''}`, callback_data: `action=start_assign&id=${docId}` }
                         ]);
