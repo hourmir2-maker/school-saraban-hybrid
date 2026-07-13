@@ -1295,6 +1295,155 @@ export default async function handler(req: any, res: any) {
           callbackChatId,
           `💬 กรุณาพิมพ์ข้อแนะนำหรือคำสั่งการเพิ่มเติมที่ต้องการให้คุณครูดำเนินการแก้ไข/ทำเพิ่มส่งมาได้เลยค่ะ 🌸`
         );
+      } else if (action === 'approve_doc') {
+        const type = params.get('type') || 'outgoing';
+        const docId = params.get('id');
+
+        if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ สิทธิ์การอนุมัติเป็นของผู้อำนวยการเท่านั้นค่ะ 🌸', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        try {
+          let tableName = '';
+          let numberColumn = '';
+          let nameString = '';
+          
+          if (type === 'outgoing') { tableName = 'outgoing_docs'; numberColumn = 'doc_number'; nameString = 'หนังสือส่ง'; }
+          else if (type === 'memo') { tableName = 'memos'; numberColumn = 'memo_number'; nameString = 'บันทึกข้อความ'; }
+          else if (type === 'order') { tableName = 'orders'; numberColumn = 'order_number'; nameString = 'คำสั่งแต่งตั้ง'; }
+          else {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ ประเภทเอกสารไม่ถูกต้องค่ะ', true);
+            return res.status(200).json({ ok: true });
+          }
+
+          // 1. ดึงข้อมูลเอกสาร
+          const { data: doc, error: docErr } = await supabase
+            .from(tableName)
+            .select('*')
+            .eq('id', docId)
+            .single();
+
+          if (docErr || !doc) {
+            await answerCallbackQuery(botToken, callbackQuery.id, `❌ ไม่พบข้อมูล${nameString}ในระบบค่ะ`, true);
+            return res.status(200).json({ ok: true });
+          }
+
+          // ตรวจสอบความซ้ำซ้อน หากอนุมัติไปแล้ว
+          if (doc.status === 'approved') {
+            await answerCallbackQuery(botToken, callbackQuery.id, `⚠️ ${nameString}นี้ได้รับการอนุมัติลงนามไปแล้วค่ะ`, true);
+            const approvedMarkup = {
+              inline_keyboard: [[{ text: `🔒 อนุมัติลงนามแล้ว`, callback_data: 'action=noop' }]]
+            };
+            await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, approvedMarkup);
+            return res.status(200).json({ ok: true });
+          }
+
+          let finalNumber = doc[numberColumn];
+          let docYear = doc.doc_year;
+          let docSeq = doc.doc_sequence;
+
+          // สำหรับคำสั่งแต่งตั้ง (รันเลขอัตโนมัติ หากยังไม่ได้รับอนุมัติ)
+          if (type === 'order' && (finalNumber === 'รออนุมัติ' || !finalNumber)) {
+            const orderDateObj = new Date(doc.order_date || new Date());
+            docYear = orderDateObj.getFullYear() + 543;
+            
+            const { data: seqDocs } = await supabase
+              .from('orders')
+              .select('doc_sequence')
+              .eq('doc_year', docYear)
+              .order('doc_sequence', { ascending: false })
+              .limit(1);
+              
+            docSeq = (seqDocs && seqDocs.length > 0) ? (seqDocs[0].doc_sequence + 1) : 1;
+            finalNumber = `${docSeq}/${docYear}`;
+          }
+
+          // 2. อัปเดตสถานะและเลขทะเบียนในฐานข้อมูล
+          const updateObj: any = { status: 'approved' };
+          if (type === 'order') {
+            updateObj.order_number = finalNumber;
+            updateObj.doc_year = docYear;
+            updateObj.doc_sequence = docSeq;
+          }
+
+          const { error: updateErr } = await supabase
+            .from(tableName)
+            .update(updateObj)
+            .eq('id', docId);
+
+          if (updateErr) throw updateErr;
+
+          await answerCallbackQuery(botToken, callbackQuery.id, `✅ ทำการอนุมัติและลงนามเรียบร้อยค่ะ`, false);
+
+          // อัปเดตปุ่มเดิมของ ผอ.
+          const approvedMarkup = {
+            inline_keyboard: [[{ text: `🔒 อนุมัติลงนามแล้ว`, callback_data: 'action=noop' }]]
+          };
+          await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, approvedMarkup);
+
+          // แจ้งข้อความยืนยันหา ผอ.
+          await sendTelegramMessage(botToken, callbackChatId, `✅ ทำการอนุมัติและลงนามอิเล็กทรอนิกส์ใน${nameString} เรื่อง <b>"${doc.subject}"</b> เรียบร้อยแล้วค่ะ 🌸`);
+
+          // 3. แจ้งเตือนครูผู้สร้าง/ผู้เสนอ
+          if (doc.created_by) {
+            const { data: creator } = await supabase
+              .from('profiles')
+              .select('telegram_chat_id')
+              .eq('id', doc.created_by)
+              .maybeSingle();
+
+            if (creator?.telegram_chat_id) {
+              await sendTelegramMessage(
+                botToken,
+                parseInt(creator.telegram_chat_id),
+                `✅ <b>แจ้งเตือนอนุมัติเอกสาร</b>\n\nยินดีด้วยค่ะ! ผู้อำนวยการได้อนุมัติและลงนามใน${nameString} เรื่อง <b>"${doc.subject}"</b> ของคุณครูเรียบร้อยแล้วนะคะ 🌸✨`
+              );
+            }
+          }
+
+        } catch (err: any) {
+          console.error('handleApproveDoc error:', err);
+          await answerCallbackQuery(botToken, callbackQuery.id, `❌ เกิดข้อผิดพลาดในการอนุมัติ: ${err.message}`, true);
+        }
+
+      } else if (action === 'reject_doc') {
+        const type = params.get('type') || 'outgoing';
+        const docId = params.get('id');
+
+        if (profileLinked.role !== 'director' && profileLinked.role !== 'admin') {
+          await answerCallbackQuery(botToken, callbackQuery.id, '❌ สิทธิ์การปฏิเสธงานเป็นของผู้อำนวยการเท่านั้นค่ะ 🌸', true);
+          return res.status(200).json({ ok: true });
+        }
+
+        try {
+          await answerCallbackQuery(botToken, callbackQuery.id);
+
+          // อัปเดตปุ่มเดิมให้ ผอ.
+          const progressMarkup = {
+            inline_keyboard: [[{ text: `💬 อยู่ระหว่างพิมพ์เหตุผลแก้ไข...`, callback_data: 'action=noop' }]]
+          };
+          await editTelegramMessageMarkup(botToken, callbackChatId, callbackQuery.message.message_id, progressMarkup);
+
+          // บันทึกสถานะเพื่อรอเหตุผล (หมดอายุใน 15 นาที)
+          await supabase.from('line_action_states').delete().eq('user_id', `telegram:${userTelegramId}`);
+          await supabase.from('line_action_states').insert([{
+            user_id: `telegram:${userTelegramId}`,
+            action: 'awaiting_doc_reject_reason',
+            context: { type, id: docId },
+            expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+          }]);
+
+          await sendTelegramMessage(
+            botToken,
+            callbackChatId,
+            `💬 กรุณาพิมพ์เหตุผลการส่งกลับ หรือจุดที่ต้องแก้ไขส่งเข้ามาในแชทนี้ เพื่อแจ้งแก่คุณครูผู้ร่างคำเสนอได้เลยค่ะ 🌸`
+          );
+
+        } catch (err: any) {
+          console.error('handleRejectDoc error:', err);
+          await answerCallbackQuery(botToken, callbackQuery.id, `❌ ไม่สามารถทำรายการได้: ${err.message}`, true);
+        }
       }
 
       return res.status(200).json({ ok: true });
@@ -1542,6 +1691,74 @@ export default async function handler(req: any, res: any) {
               parseInt(teacherProfile.telegram_chat_id),
               teacherMsg,
               teacherReplyMarkup
+            );
+          }
+        }
+        return res.status(200).json({ ok: true });
+
+      } else if (activeState.action === 'awaiting_doc_reject_reason') {
+        const { type, id } = activeState.context || {};
+        await supabase.from('line_action_states').delete().eq('id', activeState.id);
+
+        let tableName = '';
+        let nameString = '';
+        if (type === 'outgoing') { tableName = 'outgoing_docs'; nameString = 'หนังสือส่ง'; }
+        else if (type === 'memo') { tableName = 'memos'; nameString = 'บันทึกข้อความ'; }
+        else if (type === 'order') { tableName = 'orders'; nameString = 'คำสั่งแต่งตั้ง'; }
+        else {
+          await sendTelegramMessage(botToken, chatId, '❌ ประเภทเอกสารไม่ถูกต้องค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        // 1. ดึงข้อมูลเอกสาร
+        const { data: doc, error: docErr } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (docErr || !doc) {
+          await sendTelegramMessage(botToken, chatId, '❌ ไม่พบข้อมูลเอกสารในระบบค่ะ');
+          return res.status(200).json({ ok: true });
+        }
+
+        // 2. อัปเดตสถานะและเหตุผลส่งกลับ
+        let remarkObj: any = {};
+        try {
+          remarkObj = typeof doc.remark === 'object' ? doc.remark : JSON.parse(doc.remark || '{}');
+        } catch (e) { remarkObj = {}; }
+
+        remarkObj.director_opinion = rawText;
+        remarkObj.director_decision = 'ส่งกลับแก้ไข';
+        remarkObj.approved_date = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
+
+        await supabase
+          .from(tableName)
+          .update({
+            status: 'rejected',
+            remark: JSON.stringify(remarkObj)
+          })
+          .eq('id', id);
+
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          `✅ ทำการปฏิเสธ/ส่งแก้ไข ${nameString} เรื่อง <b>"${doc.subject}"</b> และส่งเหตุผลคืนคุณครูผู้ร่างเรียบร้อยแล้วค่ะ 🌸`
+        );
+
+        // 3. แจ้งเตือนครูผู้ร่าง
+        if (doc.created_by) {
+          const { data: creator } = await supabase
+            .from('profiles')
+            .select('telegram_chat_id')
+            .eq('id', doc.created_by)
+            .maybeSingle();
+
+          if (creator?.telegram_chat_id) {
+            await sendTelegramMessage(
+              botToken,
+              parseInt(creator.telegram_chat_id),
+              `❌ <b>แจ้งเตือนส่งกลับแก้ไขเอกสาร</b>\n\n${nameString} เรื่อง <b>"${doc.subject}"</b> ได้ถูกส่งกลับแก้ไข\n\n💬 <b>เหตุผลของ ผอ.:</b> "${rawText}"\n\nรบกวนคุณครูช่วยตรวจสอบและเข้าไปทำการแก้ไขบนหน้าเว็บโรงเรียนนะคะ 🙇‍♀️🌸`
             );
           }
         }
