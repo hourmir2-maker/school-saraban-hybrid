@@ -288,7 +288,8 @@ export default function Memos() {
     setIsDrafting(true);
     try {
       const prompt = `เขียนเนื้อหาบันทึกข้อความราชการ เรื่อง "${formData.subject}" โดยส่งถึง "${formData.to_person}" ${formData.ai_key_points ? `โดยมีใจความสำคัญคือ: "${formData.ai_key_points}"` : ''} ให้เขียนด้วยภาษาทางการ สละสลวย ตามระเบียบงานสารบรรณไทย เน้นเนื้อหาที่กระชับ ชัดเจน และเป็นมืออาชีพ โดยเน้นการบรรยายเนื้อหาใจความสำคัญ ห้ามมีคำลงท้าย (เช่น จึงเรียนมาเพื่อโปรดทราบ/พิจารณา) และห้ามใส่ส่วนลงลายมือชื่อ (ลงชื่อ/ตำแหน่ง) ท้ายข้อความเด็ดขาด เนื่องจากระบบจัดทำส่วนนี้แยกไว้แล้ว และห้ามใส่หัวเรื่อง เช่น 'บันทึกข้อความ', 'ส่วนราชการ', 'ที่', 'วันที่', 'เรื่อง', 'เรียน' มาในผลลัพธ์เด็ดขาด ให้เริ่มเนื้อความบรรยายโดยตรง`;
-      const draft = await generateAIDraft(prompt);
+      const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key || undefined;
+      const draft = await generateAIDraft(prompt, apiKey);
       if (draft) {
         let cleanDraft = draft;
         // ทำความสะอาดหัวกระดาษบันทึกข้อความที่ AI อาจจะแถมมา

@@ -427,8 +427,21 @@ export async function summarizeDocument(pdfBuffer: ArrayBuffer, apiKey?: string)
 
 export async function generateAIDraft(prompt: string, apiKey?: string): Promise<string> {
   if (!apiKey) {
-    const { data } = await supabase.from('settings').select('gemini_api_key').maybeSingle();
-    apiKey = data?.gemini_api_key;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      let query = supabase.from('settings').select('gemini_api_key, ai_cowork_api_key');
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('school_id').eq('id', user.id).maybeSingle();
+        if (profile?.school_id) {
+          query = query.eq('school_id', profile.school_id);
+        }
+      }
+      const { data } = await query.maybeSingle();
+      apiKey = data?.ai_cowork_api_key || data?.gemini_api_key;
+    } catch (e) {
+      const { data } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').maybeSingle();
+      apiKey = data?.ai_cowork_api_key || data?.gemini_api_key;
+    }
   }
 
   if (!apiKey) throw new Error('กรุณาตั้งค่า Gemini API Key ในหน้าตั้งค่าระบบก่อนใช้งาน AI');

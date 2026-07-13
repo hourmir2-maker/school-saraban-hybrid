@@ -779,7 +779,8 @@ ${groups.map(g => `<duty name="${g}">
         prompt = `เขียนเนื้อหาคำสั่งโรงเรียนภาษาทางการ เรื่อง "${formData.subject}" โดยอ้างอิงข้อกฎหมายราชการไทยที่ถูกต้อง เหมาะสมกับเนื้อหา พร้อมทั้งร่างคำนำเหตุผลและบทยกสั่งการ ห้ามใส่คำลงท้าย (เช่น สั่ง ณ วันที่) และห้ามใส่ส่วนลงลายมือชื่อ ผอ. ท้ายคำสั่งเด็ดขาด เนื่องจากระบบจัดทำส่วนนี้แยกไว้แล้ว และห้ามพิมพ์หัวคำสั่ง เช่น 'คำสั่ง...' หรือ 'ที่...' มาในผลลัพธ์เด็ดขาด ให้เริ่มเนื้อความบรรยายที่เป็นคำนำและฐานอำนาจโดยตรง`;
       }
 
-      const draft = await generateAIDraft(prompt);
+      const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key || undefined;
+      const draft = await generateAIDraft(prompt, apiKey);
       if (draft) {
         if (groups.length > 0) {
           // แกะค่า XML content
