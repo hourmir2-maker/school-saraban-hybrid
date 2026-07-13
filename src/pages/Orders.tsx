@@ -64,15 +64,24 @@ export default function Orders() {
     fetchDocs(); 
     fetchSettings();
     fetchTeachers();
-  }, []);
+  }, [profile]);
 
   async function fetchTeachers() {
-    const { data } = await supabase.from('teachers').select('id, prefix, first_name, last_name, position').eq('status', 'active');
+    let query = supabase.from('teachers').select('id, prefix, first_name, last_name, position').eq('status', 'active');
+    if (profile?.school_id) {
+      query = query.eq('school_id', profile.school_id);
+    }
+    const { data } = await query;
     setTeachers(data || []);
   }
 
   async function fetchSettings() {
-    const { data } = await supabase.from('settings').select('*').maybeSingle();
+    let query = supabase.from('settings').select('*');
+    if (profile?.school_id) {
+      query = query.eq('school_id', profile.school_id);
+    }
+    const { data } = await query.maybeSingle();
+
     if (data) {
       setSettings(data);
       setFormData(prev => ({
@@ -88,6 +97,9 @@ export default function Orders() {
     setLoading(true);
     try {
       let query = supabase.from('orders').select('*');
+      if (profile?.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
       if (yearToFetch) {
         query = query.eq('doc_year', yearToFetch);
       }

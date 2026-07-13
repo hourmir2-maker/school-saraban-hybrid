@@ -62,10 +62,15 @@ export default function Memos() {
   useEffect(() => { 
     fetchDocs(); 
     fetchSettings();
-  }, []);
+  }, [profile]);
 
   async function fetchSettings() {
-    const { data } = await supabase.from('settings').select('*').maybeSingle();
+    let query = supabase.from('settings').select('*');
+    if (profile?.school_id) {
+      query = query.eq('school_id', profile.school_id);
+    }
+    const { data } = await query.maybeSingle();
+
     if (data) {
       setSettings(data);
       setFormData(prev => ({
@@ -82,6 +87,9 @@ export default function Memos() {
     setLoading(true);
     try {
       let query = supabase.from('memos').select('*');
+      if (profile?.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
       if (yearToFetch) {
         query = query.eq('doc_year', yearToFetch);
       }
@@ -89,10 +97,16 @@ export default function Memos() {
       setDocs(data || []);
       
       if (yearToFetch) {
-        const { data: latestSeqDoc } = await supabase
+        let seqQuery = supabase
           .from('memos')
           .select('memo_number')
-          .eq('doc_year', yearToFetch)
+          .eq('doc_year', yearToFetch);
+          
+        if (profile?.school_id) {
+          seqQuery = seqQuery.eq('school_id', profile.school_id);
+        }
+
+        const { data: latestSeqDoc } = await seqQuery
           .order('doc_sequence', { ascending: false })
           .limit(1);
         if (latestSeqDoc && latestSeqDoc.length > 0) {
