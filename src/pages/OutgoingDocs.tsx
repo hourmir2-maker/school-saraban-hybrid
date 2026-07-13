@@ -392,13 +392,62 @@ ${userDetail}
     const referenceLines = (data.reference || '').split('\n'); 
     
     const rawAddress = settings?.school_address || '';
-    const addressLines = rawAddress.split('\n').map((l: string) => l.trim());
     
+    // พาร์สที่อยู่อัจฉริยะเพื่อจัดตำแหน่งบรรทัดตามที่ผู้ใช้ต้องการ
+    // บรรทัดที่ 1: ชื่อโรงเรียน + บ้านเลขที่/หมู่ที่
+    // บรรทัดที่ 2: ตำบล + อำเภอ
+    // บรรทัดที่ 3: จังหวัด + รหัสไปรษณีย์
+    const parseAddressLayout = (addr: string, agencyName: string) => {
+      const cleanAddr = addr.trim();
+      
+      // หากมีการจัดขึ้นบรรทัดใหม่ (\n) มาเองอยู่แล้ว ให้ใช้ตามที่ผู้ใช้จัดมา
+      if (cleanAddr.includes('\n')) {
+        const lines = cleanAddr.split('\n').map(l => l.trim()).filter(Boolean);
+        return {
+          line1: `${agencyName} ${lines[0] || ''}`.trim(),
+          line2: lines[1] || '',
+          line3: lines[2] || ''
+        };
+      }
+      
+      // กรณีข้อความเป็นบรรทัดเดียว: ทำการสืบค้นหาคำเพื่อแยกบรรทัด
+      let tIdx = cleanAddr.indexOf('ตำบล');
+      if (tIdx === -1) tIdx = cleanAddr.indexOf('ต.');
+      
+      let aIdx = cleanAddr.indexOf('อำเภอ');
+      if (aIdx === -1) aIdx = cleanAddr.indexOf('อ.');
+      
+      let jIdx = cleanAddr.indexOf('จังหวัด');
+      if (jIdx === -1) jIdx = cleanAddr.indexOf('จ.');
+      
+      let line1 = `${agencyName} ${cleanAddr}`;
+      let line2 = '';
+      let line3 = '';
+      
+      if (tIdx !== -1) {
+        line1 = `${agencyName} ${cleanAddr.substring(0, tIdx).trim()}`;
+        
+        if (aIdx !== -1 && aIdx > tIdx) {
+          line2 = cleanAddr.substring(tIdx, jIdx !== -1 && jIdx > aIdx ? jIdx : cleanAddr.length).trim();
+          
+          if (jIdx !== -1 && jIdx > aIdx) {
+            line3 = cleanAddr.substring(jIdx).trim();
+          }
+        } else {
+          line2 = cleanAddr.substring(tIdx).trim();
+        }
+      }
+      
+      return { line1, line2, line3 };
+    };
+
+    const parsedAddr = parseAddressLayout(rawAddress, data.from_agency || settings?.school_name || '');
+
     const htmlAddress = `
       <div style="font-size: 16pt; line-height: 1.1;">
-        ${data.from_agency || ''} ${addressLines[0] || ''}<br/>
-        ${addressLines[1] || ''}<br/>
-        ${addressLines[2] || ''}
+        ${parsedAddr.line1}<br/>
+        ${parsedAddr.line2 ? parsedAddr.line2 + '<br/>' : ''}
+        ${parsedAddr.line3}
       </div>
     `;
 
