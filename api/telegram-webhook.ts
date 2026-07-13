@@ -118,7 +118,7 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
 
   const rules = [
     {
-      keys: ['ค้างเกษียณ', 'รอเกษียณ', 'ยังไม่ได้เกษียณ', 'ยังไม่เกษียณ', 'ผอ. ยังไม่ได้ทำ', 'ผอ. ยังไม่สั่ง', 'ค้างผอ', 'หนังสือค้าง'],
+      keys: ['ค้างเกษียณ', 'รอเกษียณ', 'ยังไม่ได้เกษียณ', 'ยังไม่เกษียณ', 'ผอ. ยังไม่ได้ทำ', 'ผอ. ยังไม่สั่ง', 'ค้างผอ', 'หนังสือค้าง', 'รอสั่งการ', 'ค้างสั่งการ'],
       fetch: async () => {
         let query = supabase.from('incoming_docs').select('doc_number, subject, from_agency, doc_date, urgency, status');
         if (schoolId) query = query.eq('school_id', schoolId);
