@@ -120,7 +120,7 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
     {
       keys: ['ค้างเกษียณ', 'รอเกษียณ', 'ยังไม่ได้เกษียณ', 'ยังไม่เกษียณ', 'ผอ. ยังไม่ได้ทำ', 'ผอ. ยังไม่สั่ง', 'ค้างผอ', 'หนังสือค้าง', 'รอสั่งการ', 'ค้างสั่งการ'],
       fetch: async () => {
-        let query = supabase.from('incoming_docs').select('doc_number, subject, from_agency, doc_date, urgency, status');
+        let query = supabase.from('incoming_docs').select('id, doc_number, subject, from_agency, doc_date, urgency, status');
         if (schoolId) query = query.eq('school_id', schoolId);
         query = query.eq('status', 'pending');
         const { data } = await query.order('doc_date', { ascending: false }).limit(20);
@@ -198,7 +198,7 @@ async function smartFetchContext(message: string, currentYear: string, supabase:
       keys: ['หนังสือรับ', 'จดหมาย', 'เอกสารรับ', 'หนังสือเข้า', 'ไฟล์แนบ', 'เอกสารแนบ', 'แนบ', 'ไฟล์รับ'],
       fetch: async () => {
         const searchWord = extractDocSearchWord(message);
-        let query = supabase.from('incoming_docs').select('doc_number, subject, from_agency, doc_date, urgency, remark, file_url, attachment_urls, doc_assignments(instruction, status, teachers(prefix, first_name, last_name))');
+        let query = supabase.from('incoming_docs').select('id, status, doc_number, subject, from_agency, doc_date, urgency, remark, file_url, attachment_urls, doc_assignments(instruction, status, teachers(prefix, first_name, last_name))');
         if (schoolId) query = query.eq('school_id', schoolId);
         if (searchWord.length > 0) query = query.or(`subject.ilike.%${searchWord}%,doc_number.ilike.%${searchWord}%`);
         const { data } = await query.order('doc_date', { ascending: false }).limit(5);
@@ -1634,7 +1634,35 @@ export default async function handler(req: any, res: any) {
               .trim();
 
             if (finalAnswer) {
-              await sendTelegramMessage(botToken, chatId, finalAnswer);
+              let replyMarkup: any = undefined;
+              if (profileLinked.role === 'director' || profileLinked.role === 'admin') {
+                // ค้นหา id ของหนังสือรับที่มีสถานะ pending ใน contextData
+                const docMatches = contextData.match(/"id":"([a-f0-9-]{36})".*?"status":"pending"/g);
+                if (docMatches) {
+                  const inlineKeyboard: any[] = [];
+                  const addedIds = new Set<string>();
+                  for (const match of docMatches) {
+                    const idMatch = match.match(/"id":"([a-f0-9-]{36})"/);
+                    if (idMatch && idMatch[1] && !addedIds.has(idMatch[1])) {
+                      const docId = idMatch[1];
+                      addedIds.add(docId);
+                      const docBlockMatch = contextData.match(new RegExp(`\\{[^\\{]*?"id":"${docId}".*?\\}`));
+                      let docNum = '';
+                      if (docBlockMatch && docBlockMatch[0]) {
+                        const numMatch = docBlockMatch[0].match(/"doc_number":"(.*?)"/);
+                        if (numMatch && numMatch[1]) docNum = ` เลขที่ ${numMatch[1]}`;
+                      }
+                      inlineKeyboard.push([
+                        { text: `✍️ เกษียณสั่งการหนังสือ${docNum}`, callback_data: `action=start_assign&id=${docId}` }
+                      ]);
+                    }
+                  }
+                  if (inlineKeyboard.length > 0) {
+                    replyMarkup = { inline_keyboard: inlineKeyboard };
+                  }
+                }
+              }
+              await sendTelegramMessage(botToken, chatId, finalAnswer, replyMarkup);
             } else {
               await sendTelegramMessage(botToken, chatId, `📬 สวัสดีค่ะคุณครู <b>${profileLinked.display_name || ''}</b>\nขณะนี้ระบบพร้อมใช้งานแจ้งเตือนหนังสือราชการและงานสารบรรณแล้วค่ะ หากมีคำสั่งหรือการมอบหมายงานใหม่ ระบบจะทักมาโดยอัตโนมัติค่ะ`);
             }
