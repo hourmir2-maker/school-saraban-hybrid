@@ -68,20 +68,17 @@ export default function OutgoingDocs() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => { 
-    if (profile?.school_id) {
-      fetchDocs(); 
-      fetchSettings();
-      fetchIncomingDocs();
-    }
+    fetchDocs(); 
+    fetchSettings();
+    fetchIncomingDocs();
   }, [profile]);
 
   async function fetchSettings() {
-    if (!profile?.school_id) return;
-    const { data } = await supabase
-      .from('settings')
-      .select('*')
-      .eq('school_id', profile.school_id)
-      .maybeSingle();
+    let query = supabase.from('settings').select('*');
+    if (profile?.school_id) {
+      query = query.eq('school_id', profile.school_id);
+    }
+    const { data } = await query.maybeSingle();
 
     if (data) {
       setSettings(data);
@@ -96,21 +93,23 @@ export default function OutgoingDocs() {
   }
 
   async function fetchIncomingDocs() {
-    if (!profile?.school_id) return;
-    const { data } = await supabase
-      .from('incoming_docs')
-      .select('*')
-      .eq('school_id', profile.school_id)
+    let query = supabase.from('incoming_docs').select('*');
+    if (profile?.school_id) {
+      query = query.eq('school_id', profile.school_id);
+    }
+    const { data } = await query
       .order('created_at', { ascending: false })
       .limit(20);
     setIncomingDocs(data || []);
   }
 
   async function fetchDocs(yearToFetch = selectedYear) {
-    if (!profile?.school_id) return;
     setLoading(true);
     try {
-      let query = supabase.from('outgoing_docs').select('*').eq('school_id', profile.school_id);
+      let query = supabase.from('outgoing_docs').select('*');
+      if (profile?.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
       if (yearToFetch) {
         query = query.eq('doc_year', yearToFetch);
       }
@@ -118,11 +117,16 @@ export default function OutgoingDocs() {
       setDocs(data || []);
       
       if (yearToFetch) {
-        const { data: latestSeqDoc } = await supabase
+        let seqQuery = supabase
           .from('outgoing_docs')
           .select('doc_number')
-          .eq('school_id', profile.school_id)
-          .eq('doc_year', yearToFetch)
+          .eq('doc_year', yearToFetch);
+          
+        if (profile?.school_id) {
+          seqQuery = seqQuery.eq('school_id', profile.school_id);
+        }
+        
+        const { data: latestSeqDoc } = await seqQuery
           .order('doc_sequence', { ascending: false })
           .limit(1);
         if (latestSeqDoc && latestSeqDoc.length > 0) {
