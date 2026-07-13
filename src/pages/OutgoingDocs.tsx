@@ -444,7 +444,7 @@ ${userDetail}
     const parsedAddr = parseAddressLayout(rawAddress, data.from_agency || settings?.school_name || '');
 
     const htmlAddress = `
-      <div style="font-size: 16pt; line-height: 1.1;">
+      <div style="font-size: 16pt; line-height: 1.1; white-space: nowrap;">
         ${parsedAddr.line1}<br/>
         ${parsedAddr.line2 ? parsedAddr.line2 + '<br/>' : ''}
         ${parsedAddr.line3}
