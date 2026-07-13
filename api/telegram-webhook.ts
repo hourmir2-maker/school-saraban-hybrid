@@ -1635,7 +1635,7 @@ export default async function handler(req: any, res: any) {
 
             if (finalAnswer) {
               let replyMarkup: any = undefined;
-              const isReportIntent = ['งานค้าง', 'งานของฉัน', 'ยังไม่ได้ส่ง', 'ยังไม่ได้รายงาน', 'งานที่มอบหมายค้าง', 'รายงานผล', 'ส่งรายงาน', 'ส่งงาน'].some(k => msg.includes(k));
+              const isReportIntent = ['งานค้าง', 'งานของฉัน', 'ยังไม่ได้ส่ง', 'ยังไม่ได้รายงาน', 'งานที่มอบหมายค้าง', 'รายงานผล', 'ส่งรายงาน', 'ส่งงาน'].some(k => cleanedText.includes(k));
               
               // ค้นหา ID หนังสือรับทั้งหมดใน contextData (สกัดแบบอิสระ ไม่จำกัดเฉพาะ pending เพื่อให้บริการปุ่มดูเอกสารแก่ครูทุกคน)
               const docMatches = contextData.match(/"id":"([a-f0-9-]{36})"/g);
