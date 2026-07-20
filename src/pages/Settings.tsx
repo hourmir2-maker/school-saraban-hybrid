@@ -51,6 +51,7 @@ export default function Settings() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [sigPreviewUrl, setSigPreviewUrl] = useState<string | null>(null);
   const [showGasModal, setShowGasModal] = useState(false);
+  const [showTelegramModal, setShowTelegramModal] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [noticeModal, setNoticeModal] = useState<{ isOpen: boolean; title: string; message: string; isSuccess: boolean }>({
     isOpen: false,
@@ -546,9 +547,18 @@ export default function Settings() {
             </div>
 
             <div className="col-span-full space-y-4 pt-4 border-t border-slate-50">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                <Send size={16} className="text-brand-primary" /> การตั้งค่า Telegram Bot API
-              </h4>
+              <div className="flex justify-between items-center col-span-full">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                  <Send size={16} className="text-[#229ED9]" /> การตั้งค่า Telegram Bot API
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowTelegramModal(true)}
+                  className="text-[10px] text-[#229ED9] font-black hover:underline uppercase tracking-widest flex items-center gap-1 cursor-pointer"
+                >
+                  📖 ดูคู่มือและขั้นตอนตั้งค่า Telegram Bot
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest text-brand-primary">Telegram Bot Token</label>
