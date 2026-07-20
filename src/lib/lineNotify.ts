@@ -43,11 +43,16 @@ export async function sendLineNotification(message: string, specificToId?: strin
     const activeSchoolId = localStorage.getItem('active_school_id');
     let settingsQuery = supabase
       .from('settings')
-      .select('line_channel_access_token, line_group_id');
+      .select('line_channel_access_token, line_group_id, is_line_enabled');
     if (activeSchoolId) {
       settingsQuery = settingsQuery.eq('school_id', activeSchoolId);
     }
     const { data: settings } = await settingsQuery.maybeSingle();
+
+    if (settings?.is_line_enabled === false) {
+      console.log('[LINE NOTIFY] LINE Bot is currently disabled in Settings. Skipping notification.');
+      return { success: false, disabled: true, message: 'LINE Bot is disabled' };
+    }
 
     const channelAccessToken = settings?.line_channel_access_token || undefined;
     const groupId = settings?.line_group_id;
@@ -178,11 +183,16 @@ export async function sendInteractiveFlexMessage(
     const activeSchoolId = localStorage.getItem('active_school_id');
     let settingsQuery = supabase
       .from('settings')
-      .select('line_channel_access_token, line_group_id');
+      .select('line_channel_access_token, line_group_id, is_line_enabled');
     if (activeSchoolId) {
       settingsQuery = settingsQuery.eq('school_id', activeSchoolId);
     }
     const { data: settings } = await settingsQuery.maybeSingle();
+
+    if (settings?.is_line_enabled === false) {
+      console.log('[LINE NOTIFY] LINE Bot is currently disabled in Settings. Skipping notification.');
+      return { success: false, disabled: true, message: 'LINE Bot is disabled' };
+    }
 
     const channelAccessToken = settings?.line_channel_access_token || undefined;
     const groupId = settings?.line_group_id;
@@ -311,11 +321,16 @@ export async function sendBulkFlexCarousel(
     const activeSchoolId = localStorage.getItem('active_school_id');
     let settingsQuery = supabase
       .from('settings')
-      .select('line_channel_access_token, line_group_id');
+      .select('line_channel_access_token, line_group_id, is_line_enabled');
     if (activeSchoolId) {
       settingsQuery = settingsQuery.eq('school_id', activeSchoolId);
     }
     const { data: settings } = await settingsQuery.maybeSingle();
+
+    if (settings?.is_line_enabled === false) {
+      console.log('[LINE NOTIFY] LINE Bot is currently disabled in Settings. Skipping notification.');
+      return { success: false, disabled: true, message: 'LINE Bot is disabled' };
+    }
 
     const channelAccessToken = settings?.line_channel_access_token || undefined;
     const groupId = settings?.line_group_id;

@@ -21,6 +21,20 @@ import SchoolApprovals from './pages/SchoolApprovals';
 import IdentityFooter from './components/IdentityFooter';
 import ComingSoon from './components/ComingSoon';
 
+import Students from './pages/Students';
+import Attendance from './pages/Attendance';
+import AttendanceReport from './pages/AttendanceReport';
+import LibraryModule from './pages/Library';
+import WFHModule from './pages/WFH';
+import LECReports from './pages/LECReports';
+import CustomStudentPrint from './pages/CustomStudentPrint';
+import Academic from './pages/Academic';
+import Procurement from './pages/Procurement';
+import FreeEducation from './pages/FreeEducation';
+import Utilities from './pages/Utilities';
+import ServiceArea from './pages/ServiceArea';
+import Athletics from './pages/Athletics';
+
 import { 
   Loader2, 
   LayoutDashboard, 
@@ -341,12 +355,38 @@ function App() {
               <SidebarItem icon={<Gamepad2 size={20} />} label="น้องชบาพาพิชิต(AR)" active={activeTab === 'ar_learning'} onClick={() => setActiveTab('ar_learning')} />
               <SidebarItem icon={<SettingsIcon size={20} />} label="จัดการบทเรียน AR" active={activeTab === 'ar_admin'} onClick={() => setActiveTab('ar_admin')} />
 
-              {canAccessStaff && (
-                <>
-                  <div className="py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mt-4 text-[9px]">งานบุคคล</div>
-                  <SidebarItem icon={<UserCheck size={20} />} label="จัดการข้อมูลครู" active={activeTab === 'teachers'} onClick={() => setActiveTab('teachers')} />
-                </>
+              {canAccessAcademic && (
+                <div className="py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mt-4 text-[9px]">
+                  {isTeacher && !extraPerms.access_academic ? "งานแผนการสอน" : "งานวิชาการ"}
+                </div>
               )}
+              {canAccessAcademic && (
+                <SidebarItem 
+                  icon={<GraduationCap size={20} />} 
+                  label={isTeacher && !extraPerms.access_academic ? "ส่งแผนการสอน" : "ระบบวิชาการ"} 
+                  active={activeTab === 'academic'} 
+                  onClick={() => setActiveTab('academic')} 
+                />
+              )}
+              {canAccessLibrary && <SidebarItem icon={<Library size={20} />} label="ระบบห้องสมุด" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />}
+
+              {canAccessFinance && <div className="py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mt-4 text-[9px]">งานงบประมาณ</div>}
+              {canAccessFinance && <SidebarItem icon={<Wallet size={20} />} label="การเงิน/พัสดุ" active={activeTab === 'finance'} onClick={() => setActiveTab('finance')} />}
+              {canAccessFinance && <SidebarItem icon={<Droplets size={20} />} label="เบิกค่าสาธารณูปโภค" active={activeTab === 'utilities'} onClick={() => setActiveTab('utilities')} />}
+              {canAccessFinance && <SidebarItem icon={<Coins size={20} />} label="จ่ายเงินเรียนฟรี" active={activeTab === 'free_education'} onClick={() => setActiveTab('free_education')} />}
+
+              {canAccessStaff && <div className="py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mt-4 text-[9px]">งานบุคคล</div>}
+              {canAccessStaff && <SidebarItem icon={<UserCheck size={20} />} label="จัดการข้อมูลครู" active={activeTab === 'teachers'} onClick={() => setActiveTab('teachers')} />}
+              {canAccessStaff && <SidebarItem icon={<Clock size={20} />} label="ลงเวลาปฏิบัติงาน" active={activeTab === 'wfh'} onClick={() => setActiveTab('wfh')} />}
+
+              <div className="py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mt-4 text-[9px]">งานบริหารทั่วไป</div>
+              {canAccessStudentAffairs && <SidebarItem icon={<Users size={20} />} label="ข้อมูลนักเรียน" active={activeTab === 'students'} onClick={() => setActiveTab('students')} />}
+              {canAccessAthletics && <SidebarItem icon={<Gamepad2 size={20} />} label="งานลงทะเบียนนักกีฬา" active={activeTab === 'athletics'} onClick={() => setActiveTab('athletics')} />}
+              {canAccessStudentAffairs && <SidebarItem icon={<MapPin size={20} />} label="เด็กในเขตบริการ (ทร.14)" active={activeTab === 'service_area'} onClick={() => setActiveTab('service_area')} />}
+              <SidebarItem icon={<Printer size={20} />} label="พิมพ์รายชื่อ" active={activeTab === 'custom_print'} onClick={() => setActiveTab('custom_print')} />
+              {canAccessReports && <SidebarItem icon={<PieChart size={20} />} label="รายงาน LEC" active={activeTab === 'lec'} onClick={() => setActiveTab('lec')} />}
+              <SidebarItem icon={<Clock size={20} />} label="บันทึกเวลาเรียน" active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} />
+              {canAccessStudentAffairs && <SidebarItem icon={<BarChart3 size={20} />} label="รายงานเวลาเรียน" active={activeTab === 'attendance_report'} onClick={() => setActiveTab('attendance_report')} />}
               
               {isAdmin && (
                 <>
@@ -445,19 +485,19 @@ function App() {
             {activeTab === 'ar_admin' && <ARAdmin onBack={() => setActiveTab('dashboard')} />}
             {activeTab === 'approvals' && <SchoolApprovals />}
             
-            {activeTab === 'students' && <ComingSoon title="ระบบข้อมูลนักเรียน" />}
-            {activeTab === 'attendance' && <ComingSoon title="ระบบบันทึกเวลาเรียน" />}
-            {activeTab === 'attendance_report' && <ComingSoon title="รายงานเวลาเรียน" />}
-            {activeTab === 'library' && <ComingSoon title="ระบบห้องสมุด (วิชาการ)" />}
-            {activeTab === 'wfh' && <ComingSoon title="ระบบลงเวลาปฏิบัติงาน (WFH)" />}
-            {activeTab === 'lec' && <ComingSoon title="รายงานเวลาเรียน (LEC)" />}
-            {activeTab === 'custom_print' && <ComingSoon title="พิมพ์รายชื่อตามกิจกรรม" />}
-            {activeTab === 'academic' && <ComingSoon title="ระบบส่งแผนการสอน (งานวิชาการ)" />}
-            {activeTab === 'finance' && <ComingSoon title="ระบบบริหารงบประมาณและการเงิน" />}
-            {activeTab === 'free_education' && <ComingSoon title="ระบบจ่ายเงินเรียนฟรี 15 ปี" />}
-            {activeTab === 'utilities' && <ComingSoon title="ระบบเบิกจ่ายค่าสาธารณูปโภค" />}
-            {activeTab === 'service_area' && <ComingSoon title="ระบบตรวจสอบเขตพื้นที่บริการ (ทร.14)" />}
-            {activeTab === 'athletics' && <ComingSoon title="ระบบลงทะเบียนนักกีฬา" />}
+            {activeTab === 'students' && <Students />}
+            {activeTab === 'attendance' && <Attendance />}
+            {activeTab === 'attendance_report' && <AttendanceReport />}
+            {activeTab === 'library' && <LibraryModule />}
+            {activeTab === 'wfh' && <WFHModule />}
+            {activeTab === 'lec' && <LECReports />}
+            {activeTab === 'custom_print' && <CustomStudentPrint />}
+            {activeTab === 'academic' && <Academic />}
+            {activeTab === 'finance' && <Procurement />}
+            {activeTab === 'free_education' && <FreeEducation />}
+            {activeTab === 'utilities' && <Utilities />}
+            {activeTab === 'service_area' && <ServiceArea />}
+            {activeTab === 'athletics' && <Athletics />}
             
             <IdentityFooter schoolName={schoolName} schoolLogo={schoolLogo} localGovName={localGovName} />
           </div>
