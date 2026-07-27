@@ -101,14 +101,16 @@ export default function Teachers() {
           .select('*')
           .eq('school_id', activeProfile.id)
           .eq('status', 'active')
-          .in('role', ['admin', 'director', 'teacher']);
+          .in('role', ['director', 'teacher']); // คัด 'admin' ออก
         dbProfiles = profilesData || [];
       }
 
-      // 2. ดึงข้อมูลครูเดิมในตาราง teachers
-      const { data: teachersData, error: teachersError } = await supabase
-        .from('teachers')
-        .select('*')
+      // 2. ดึงข้อมูลครูเดิมในตาราง teachers (กรองเฉพาะโรงเรียนตัวเองด้วย)
+      let teachersQuery = supabase.from('teachers').select('*');
+      if (activeProfile?.id && isUUID) {
+        teachersQuery = teachersQuery.eq('school_id', activeProfile.id);
+      }
+      const { data: teachersData, error: teachersError } = await teachersQuery
         .order('first_name', { ascending: true });
 
       if (teachersError) throw teachersError;
@@ -172,12 +174,14 @@ export default function Teachers() {
             .insert(toInsert);
           
           if (!insertError) {
-            // คิวรีข้อมูลครูใหม่อีกครั้งหลังบันทึก
-            const { data: updatedTeachers } = await supabase
-              .from('teachers')
-              .select('*')
-              .order('first_name', { ascending: true });
-            currentTeachers = updatedTeachers || [];
+          // คิวรีข้อมูลครูใหม่อีกครั้งหลังบันทึก
+          let updatedQuery = supabase.from('teachers').select('*');
+          if (activeProfile?.id && isUUID) {
+            updatedQuery = updatedQuery.eq('school_id', activeProfile.id);
+          }
+          const { data: updatedTeachers } = await updatedQuery
+            .order('first_name', { ascending: true });
+          currentTeachers = updatedTeachers || [];
           } else {
             console.error('Error insert auto-sync teachers:', insertError);
           }

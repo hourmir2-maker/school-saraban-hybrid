@@ -1864,12 +1864,17 @@ async function handleStartAssign(event: any, params: URLSearchParams, profile: a
       return;
     }
 
-    // ดึงคุณครู active ทั้งหมด
-    const { data: teachers } = await supabaseAdmin
+    // ดึงคุณครู active ทั้งหมด (กรองตามโรงเรียนของผู้ใช้คนปัจจุบัน)
+    let teachersQuery = supabaseAdmin
       .from('teachers')
       .select('*')
-      .eq('status', 'active')
-      .order('first_name');
+      .eq('status', 'active');
+      
+    if (profile.school_id) {
+      teachersQuery = teachersQuery.eq('school_id', profile.school_id);
+    }
+
+    const { data: teachers } = await teachersQuery.order('first_name');
 
     if (!teachers || teachers.length === 0) {
       await replyToLine(replyToken, '❌ ไม่พบรายชื่อคุณครูในระบบสำหรับมอบหมายงานค่ะ');
