@@ -20,6 +20,7 @@ import ARAdmin from './pages/ARAdmin';
 import SchoolApprovals from './pages/SchoolApprovals';
 import IdentityFooter from './components/IdentityFooter';
 import ComingSoon from './components/ComingSoon';
+import ResetPasswordModal from './components/ResetPasswordModal';
 
 import Students from './pages/Students';
 import Attendance from './pages/Attendance';
@@ -82,6 +83,7 @@ function App() {
   const [schoolName, setSchoolName] = useState(import.meta.env.VITE_SCHOOL_NAME || 'โรงเรียนบ้านควนโคกยา');
   const [schoolLogo, setSchoolLogo] = useState('');
   const [localGovName, setLocalGovName] = useState('');
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
   
   const [showSchoolSetup, setShowSchoolSetup] = useState(() => {
     return sessionStorage.getItem('open_school_setup_after_reload') === 'true';
@@ -92,6 +94,16 @@ function App() {
       sessionStorage.removeItem('open_school_setup_after_reload');
     }
   }, [showSchoolSetup]);
+
+  // ===== ตรวจจับ Supabase PASSWORD_RECOVERY Event =====
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowPasswordReset(true);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleSwitchSchool = async () => {
     if (window.confirm('คุณครูต้องการสลับสถานศึกษาใช่หรือไม่?\nระบบจะทำการออกจากระบบของโรงเรียนนี้')) {
@@ -563,6 +575,11 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* ===== Reset Password Modal ===== */}
+      {showPasswordReset && (
+        <ResetPasswordModal onClose={() => setShowPasswordReset(false)} />
+      )}
     </div>
   );
 }

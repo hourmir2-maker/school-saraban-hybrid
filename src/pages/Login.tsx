@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase, getSchoolProfiles, getActiveSchoolProfile, initSupabase, type SchoolProfile } from '../lib/supabase';
 import { LogIn, UserPlus, Loader2, ArrowLeft, Settings, School } from 'lucide-react';
+import ForgotPasswordView from '../components/ForgotPasswordView';
 
 interface LoginProps {
   onManageSchools: () => void;
@@ -8,6 +9,7 @@ interface LoginProps {
 
 export default function Login({ onManageSchools }: LoginProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [schoolCode, setSchoolCode] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,7 +81,20 @@ export default function Login({ onManageSchools }: LoginProps) {
     
     setSchoolLogo('');
     await fetchSchoolSettings();
-  };  const handleAuth = async (e: React.FormEvent) => {
+  };  
+
+  // ===== แสดงหน้าลืมรหัสผ่านแทน =====
+  if (isForgotPassword) {
+    return (
+      <ForgotPasswordView
+        onBack={() => setIsForgotPassword(false)}
+        schoolName={schoolName}
+        schoolLogo={schoolLogo}
+      />
+    );
+  }
+
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -262,6 +277,19 @@ export default function Login({ onManageSchools }: LoginProps) {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+
+            {/* ลืมรหัสผ่าน */}
+            {!isSignUp && (
+              <div className="flex justify-end -mt-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsForgotPassword(true); setError(null); setMessage(null); }}
+                  className="text-xs text-brand-primary font-bold hover:underline transition-colors"
+                >
+                  ลืมรหัสผ่าน?
+                </button>
+              </div>
+            )}
 
             <button
               type="submit"
