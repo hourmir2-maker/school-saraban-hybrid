@@ -561,6 +561,7 @@ export default function Memos() {
       const finalMemoNumber = formData.memo_number.trim() || `${docSeq}/${docYear}`;
 
       const { data: insertedDocs, error } = await supabase.from('memos').insert([{ 
+        school_id: profile?.school_id,
         memo_number: finalMemoNumber,
         subject: formData.subject,
         requester: formData.requester,

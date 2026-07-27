@@ -571,6 +571,7 @@ export default function Orders() {
       const docYear = orderDateObj.getFullYear() + 543;
 
       const { data: insertedDocs, error } = await supabase.from('orders').insert([{ 
+        school_id: profile?.school_id,
         order_number: formData.order_number || 'รออนุมัติ',
         subject: formData.subject,
         issuer: formData.issuer,

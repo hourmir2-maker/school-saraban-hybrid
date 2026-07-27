@@ -408,6 +408,7 @@ export default function IncomingDocs() {
       };
 
       const { data: insertedDocs, error } = await supabase.from('incoming_docs').insert([{
+        school_id: profile?.school_id,
         doc_number: finalDocNum,
         from_agency: formData.from_agency,
         subject: formData.subject,

@@ -830,6 +830,7 @@ ${userDetail}
       const finalDocNumber = formData.doc_number.trim() || `${prefix}${docSeq}`;
 
       const { data: insertedDocs, error } = await supabase.from('outgoing_docs').insert([{ 
+        school_id: profile?.school_id,
         doc_number: finalDocNumber,
         from_agency: formData.from_agency,
         to_agency: formData.to_agency,
