@@ -800,12 +800,7 @@ export default function IncomingDocs() {
                 <tr key={doc.id} className="hover:bg-slate-50 transition-colors group">
                   {hasAccess && (
                     <td className="px-4 py-4 text-center">
-                      {(doc.status === 'reserved' || doc.is_reserved) && (
-                        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm border border-amber-200">
-                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></div>
-                          🟡 จองเลขแล้ว (รอไฟล์)
-                        </span>
-                      )}
+                      
                       {doc.status === 'waiting_proposal' && (
                         <input 
                           type="checkbox" 
@@ -825,6 +820,11 @@ export default function IncomingDocs() {
                   <td className="px-6 py-4">
                     <div className="font-bold text-slate-800 text-sm">{doc.doc_number}</div>
                     <div className="text-[10px] text-slate-400">{doc.doc_date}</div>
+                    {(doc.status === 'reserved' || doc.is_reserved) && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 mt-1.5 whitespace-nowrap">
+                        🟡 จองเลขแล้ว (รอไฟล์)
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-sm font-medium text-slate-700">{doc.subject}</p>
@@ -836,12 +836,7 @@ export default function IncomingDocs() {
                           รอ ผอ. เกษียณ
                         </span>
                       )}
-                      {(doc.status === 'reserved' || doc.is_reserved) && (
-                        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm border border-amber-200">
-                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></div>
-                          🟡 จองเลขแล้ว (รอไฟล์)
-                        </span>
-                      )}
+                      
                       {doc.status === 'waiting_proposal' && (
                         <span className="flex items-center gap-1 text-[9px] font-medium text-purple-500 bg-purple-50/50 px-1.5 py-0.5 rounded-sm">
                           <div className="w-1 h-1 bg-purple-400 rounded-full"></div>

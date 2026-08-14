@@ -1077,6 +1077,11 @@ ${userDetail}
                   <td className="px-6 py-4">
                     <div className="font-bold text-slate-800 text-sm">{doc.doc_number}</div>
                     <div className="text-[10px] text-slate-400">{doc.doc_date}</div>
+                    {(doc.status === 'reserved' || doc.is_reserved) && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 mt-1.5 whitespace-nowrap">
+                        🟡 จองเลขแล้ว (รอไฟล์)
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-slate-700">
                     {doc.subject}
