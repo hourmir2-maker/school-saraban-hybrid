@@ -1,11 +1,13 @@
 -- ====================================================================
--- 🏫 SUPABASE SQL MIGRATION PATCH: COMPLETE MODULES FOR HYBRID (V1.3.1)
--- แก้ไขปัญหา Column "date" does not exist โดยเพิ่มคำสั่ง ALTER TABLE 
--- ครบทุกคอลัมน์ก่อนสร้าง Index และฟังก์ชัน ปลอดภัย 100% รันได้ทันที
+-- 🏫 SUPABASE SQL MIGRATION PATCH: COMPLETE MODULES FOR HYBRID (V1.3.2)
+-- รวมการแก้ไข:
+-- 1. สร้าง RPC get_attendance_summary และ get_dashboard_stats
+-- 2. สร้างค่าเริ่มต้นในตาราง settings (ป้องกัน Error 406 Not Acceptable)
+-- 3. ตรวจสอบและเพิ่มคอลัมน์ vendor_name, vendor_info, date ให้ครบถ้วน
 -- ====================================================================
 
 -- --------------------------------------------------------------------
--- 1. อัปเดตตาราง settings
+-- 1. อัปเดตตาราง settings และแทรกข้อมูลเริ่มต้น (ป้องกัน 406)
 -- --------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.settings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -33,6 +35,9 @@ CREATE TABLE IF NOT EXISTS public.settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS school_name TEXT;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS director_name TEXT;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS phone_number TEXT;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS current_academic_year TEXT DEFAULT '2569';
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS current_term TEXT DEFAULT '1';
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS school_doc_prefix TEXT DEFAULT 'ศธ ๐๔';
@@ -44,6 +49,16 @@ ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS telegram_group_id TEXT;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS line_bot_enabled BOOLEAN DEFAULT true;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS telegram_bot_enabled BOOLEAN DEFAULT true;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS ai_cowork_api_key TEXT;
+
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access on settings" ON public.settings;
+CREATE POLICY "Allow all access on settings" ON public.settings
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- แทรกข้อมูลเริ่มต้นใน settings หากยังไม่มีข้อมูล (ป้องกัน Error 406 เมื่อ frontend เรียกใช้ .single())
+INSERT INTO public.settings (school_name, current_academic_year, current_term, school_doc_prefix)
+SELECT 'โรงเรียนสังกัดเครือข่าย', '2569', '1', 'ศธ ๐๔'
+WHERE NOT EXISTS (SELECT 1 FROM public.settings);
 
 -- --------------------------------------------------------------------
 -- 2. อัปเดตตารางสารบรรณ (incoming_docs, outgoing_docs, memos, orders)
@@ -113,7 +128,7 @@ CREATE POLICY "Allow school-specific access on students" ON public.students
 CREATE INDEX IF NOT EXISTS idx_students_school_year ON public.students(school_id, academic_year);
 
 -- --------------------------------------------------------------------
--- 4. ตารางบันทึกเวลาเรียน (Attendance) - ป้องกัน Column "date" does not exist
+-- 4. ตารางบันทึกเวลาเรียน (Attendance)
 -- --------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.attendance (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -128,7 +143,6 @@ CREATE TABLE IF NOT EXISTS public.attendance (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- เพิ่มคอลัมน์ date และ summary อย่างชัดเจนในกรณีที่ตารางเดิมเคยมีอยู่แล้ว
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS class_level TEXT;
@@ -138,7 +152,6 @@ ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS summary JSONB DEFAULT '{"
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS teacher_id UUID;
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ DEFAULT NOW();
 
--- เชื่อมโยงข้อมูล check_date เดิมเข้าสู่คอลัมน์ date (ถ้ามี)
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'attendance' AND column_name = 'check_date') THEN
@@ -161,7 +174,7 @@ CREATE TABLE IF NOT EXISTS public.teacher_duties (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
   teacher_id UUID,
-  duty_day TEXT NOT NULL, -- Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  duty_day TEXT NOT NULL,
   duty_type TEXT DEFAULT 'เวรประจำวัน',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -220,7 +233,6 @@ CREATE INDEX IF NOT EXISTS idx_wfh_logs_school_time ON public.wfh_logs(school_id
 -- 7. ระบบงบประมาณและพัสดุ (Budget & Procurement)
 -- --------------------------------------------------------------------
 
--- แหล่งงบประมาณ (Budget Allocations)
 CREATE TABLE IF NOT EXISTS public.budget_allocations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
@@ -242,7 +254,6 @@ CREATE POLICY "Allow school-specific access on budget_allocations" ON public.bud
   FOR ALL USING (school_id = get_user_school_id() OR school_id IS NULL)
   WITH CHECK (school_id = get_user_school_id() OR school_id IS NULL);
 
--- โครงการตามแผนปฏิบัติการ (School Projects)
 CREATE TABLE IF NOT EXISTS public.school_projects (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
@@ -265,7 +276,6 @@ CREATE POLICY "Allow school-specific access on school_projects" ON public.school
   FOR ALL USING (school_id = get_user_school_id() OR school_id IS NULL)
   WITH CHECK (school_id = get_user_school_id() OR school_id IS NULL);
 
--- การโอนเงิน/ถัวจ่ายงบประมาณ (Budget Transfers)
 CREATE TABLE IF NOT EXISTS public.budget_transfers (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
@@ -285,7 +295,6 @@ CREATE POLICY "Allow school-specific access on budget_transfers" ON public.budge
   FOR ALL USING (school_id = get_user_school_id() OR school_id IS NULL)
   WITH CHECK (school_id = get_user_school_id() OR school_id IS NULL);
 
--- ข้อมูลร้านค้า / ผู้รับจ้าง (Vendors)
 CREATE TABLE IF NOT EXISTS public.vendors (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
@@ -303,7 +312,6 @@ CREATE POLICY "Allow school-specific access on vendors" ON public.vendors
   FOR ALL USING (school_id = get_user_school_id() OR school_id IS NULL)
   WITH CHECK (school_id = get_user_school_id() OR school_id IS NULL);
 
--- รายการจัดซื้อจัดจ้าง (Procurement Projects)
 CREATE TABLE IF NOT EXISTS public.procurement_projects (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
@@ -330,6 +338,9 @@ CREATE TABLE IF NOT EXISTS public.procurement_projects (
 );
 
 ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
+ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS vendor_name TEXT;
+ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS vendor_address TEXT;
+ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS vendor_tax_id TEXT;
 ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS vendor_info JSONB DEFAULT '{"name": "", "address": "", "tax_id": ""}'::jsonb;
 ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS document_set_id TEXT DEFAULT 'material_egp';
 ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS ai_draft_content JSONB DEFAULT '{}'::jsonb;
@@ -361,26 +372,22 @@ DECLARE
 BEGIN
   v_school_id := COALESCE(target_school_id, get_user_school_id());
 
-  -- 1. นับจำนวนนักเรียนปัจจุบัน
   SELECT COUNT(*) INTO v_total_students
   FROM public.students
   WHERE (academic_year = target_year OR target_year IS NULL)
     AND (v_school_id IS NULL OR school_id = v_school_id)
     AND (status = 'active' OR graduation_status ILIKE '%กำลังศึกษา%' OR graduation_status = 'ปกติ');
 
-  -- 2. นับหนังสือรับวันนี้
   SELECT COUNT(*) INTO v_incoming_today
   FROM public.incoming_docs
   WHERE (doc_date = today_date OR created_at::date = today_date)
     AND (v_school_id IS NULL OR school_id = v_school_id);
 
-  -- 3. รวมจำนวนนักเรียนที่มาเรียนวันนี้
   SELECT COALESCE(SUM((summary->>'present')::int), 0) INTO v_present_today
   FROM public.attendance
   WHERE date = today_date
     AND (v_school_id IS NULL OR school_id = v_school_id);
 
-  -- 4. ส่งกลับเป็น JSON Object
   result := jsonb_build_object(
     'total_students', v_total_students,
     'incoming_today', v_incoming_today,
@@ -392,3 +399,39 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_dashboard_stats(TEXT, DATE, UUID) TO authenticated, anon;
+
+-- --------------------------------------------------------------------
+-- 9. RPC ฟังก์ชันคำนวณสรุปการเข้าเรียน (get_attendance_summary)
+-- --------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_attendance_summary(
+  start_date DATE,
+  end_date DATE,
+  target_school_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+  total_present BIGINT,
+  total_absent BIGINT,
+  total_late BIGINT,
+  total_leave BIGINT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_school_id UUID;
+BEGIN
+  v_school_id := COALESCE(target_school_id, get_user_school_id());
+
+  RETURN QUERY
+  SELECT 
+    COALESCE(SUM((summary->>'present')::bigint), 0) AS total_present,
+    COALESCE(SUM((summary->>'absent')::bigint), 0) AS total_absent,
+    COALESCE(SUM((summary->>'late')::bigint), 0) AS total_late,
+    COALESCE(SUM((summary->>'leave')::bigint), 0) AS total_leave
+  FROM public.attendance
+  WHERE date >= start_date AND date <= end_date
+    AND (v_school_id IS NULL OR school_id = v_school_id);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_attendance_summary(DATE, DATE, UUID) TO authenticated, anon;

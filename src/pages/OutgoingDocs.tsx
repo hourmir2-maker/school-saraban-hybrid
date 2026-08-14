@@ -667,7 +667,7 @@ ${userDetail}
   async function handleDelete(id: string) {
     if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลนี้? รวมถึงไฟล์ใน Drive จะถูกลบด้วย')) return;
     try {
-      const { data: doc } = await supabase.from('outgoing_docs').select('file_url').eq('id', id).single();
+      const { data: doc } = await supabase.from('outgoing_docs').select('file_url').eq('id', id).maybeSingle();
       if (doc?.file_url) {
         await deleteFileFromDrive(doc.file_url);
       }

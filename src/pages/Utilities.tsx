@@ -206,7 +206,7 @@ export default function Utilities() {
           created_by: user.id
         }])
         .select()
-        .single();
+        .maybeSingle();
 
       if (pError) throw pError;
 

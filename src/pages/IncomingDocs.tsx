@@ -324,7 +324,7 @@ export default function IncomingDocs() {
   async function handleDelete(id: string) {
     if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลนี้?')) return;
     try {
-      const { data: doc } = await supabase.from('incoming_docs').select('file_url, attachment_urls').eq('id', id).single();
+      const { data: doc } = await supabase.from('incoming_docs').select('file_url, attachment_urls').eq('id', id).maybeSingle();
       if (doc) {
         if (doc.file_url.includes('drive.google.com')) await deleteFileFromDrive(doc.file_url);
         else if (doc.file_url.includes('supabase.co')) {

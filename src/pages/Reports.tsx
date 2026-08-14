@@ -644,13 +644,13 @@ export default function Reports() {
       {/* Visual Charts */}
       {mounted && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="lg:col-span-2 min-w-0 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
             <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
               <BarChart className="text-brand-primary" size={20} />
               สถิติปริมาณงานเอกสารราชการรายเดือน (ประจำปี พ.ศ. {selectedYear})
             </h3>
             <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
                 <ReBarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="month" tick={{ fontSize: 11, fontWeight: 'bold' }} stroke="#94a3b8" />
@@ -665,7 +665,7 @@ export default function Reports() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="bg-white min-w-0 p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
             <div>
               <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
                 <PieChartIcon className="text-indigo-500" size={20} />
@@ -678,7 +678,7 @@ export default function Reports() {
                     ยังไม่มีข้อมูลนักเรียนในปีการศึกษา พ.ศ. {selectedYear}
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
                     <RePieChart>
                       <Pie data={studentDistData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
                         {studentDistData.map((_, index) => (

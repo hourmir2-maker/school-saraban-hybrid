@@ -391,7 +391,7 @@ export default function AICowork() {
           content_text: extractedText
         }])
         .select('id')
-        .single();
+        .maybeSingle();
 
       if (insertErr) throw insertErr;
 

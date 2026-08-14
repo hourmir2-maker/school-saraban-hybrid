@@ -168,7 +168,7 @@ export default function ARAdmin({ onBack }: ARAdminProps) {
             .from('profiles')
             .select('*')
             .eq('id', user.id)
-            .single();
+            .maybeSingle();
           setUserProfile(profile);
         }
       } catch (e) {

@@ -111,7 +111,7 @@ export default function Login({ onManageSchools }: LoginProps) {
           .from('schools')
           .select('id, school_name')
           .eq('school_code', schoolCode.trim().toUpperCase())
-          .single();
+          .maybeSingle();
           
         if (schoolError || !schoolData) {
           throw new Error('ไม่พบรหัสโรงเรียนนี้ในระบบ กรุณาตรวจสอบรหัสโรงเรียนอีกครั้ง หรือติดต่อผู้ดูแลระบบส่วนกลาง');

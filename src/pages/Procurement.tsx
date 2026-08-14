@@ -166,7 +166,7 @@ export default function Procurement() {
       const [budRes, teachRes, procRes] = await Promise.all([
         Promise.resolve({ data: [], error: null }), // budget_allocations table not in hybrid schema
         supabase.from('teachers').select('*').order('first_name'),
-        supabase.from('procurement_projects').select('id, project_name, vendor_name').order('created_at', { ascending: false })
+        supabase.from('procurement_projects').select('*').order('created_at', { ascending: false })
       ]);
 
       if (budRes.data) setBudgets(budRes.data);
@@ -176,11 +176,16 @@ export default function Procurement() {
         const uniqueVendors: any[] = [];
         const seenNames = new Set();
         procRes.data.forEach((p: any) => {
-          if (p.vendor_name && p.vendor_name.trim() !== '') {
-            const nameNormalized = p.vendor_name.trim().toLowerCase();
+          const vName = p.vendor_name || p.vendor_info?.name || '';
+          if (vName && vName.trim() !== '') {
+            const nameNormalized = vName.trim().toLowerCase();
             if (!seenNames.has(nameNormalized)) {
               seenNames.add(nameNormalized);
-              uniqueVendors.push({ name: p.vendor_name, address: p.vendor_address || '', tax_id: p.vendor_tax_id || '' });
+              uniqueVendors.push({ 
+                name: vName, 
+                address: p.vendor_address || p.vendor_info?.address || '', 
+                tax_id: p.vendor_tax_id || p.vendor_info?.tax_id || '' 
+              });
             }
           }
         });
@@ -389,7 +394,7 @@ export default function Procurement() {
       }
 
       // ดึงข้อมูลการตั้งค่าโรงเรียน
-      const { data: settings } = await supabase.from('settings').select('*').single();
+      const { data: settings } = await supabase.from('settings').select('*').maybeSingle();
       const schoolName = settings?.school_name || 'โรงเรียนบ้านควนโคกยา';
       const directorName = settings?.director_name || '';
 
@@ -618,7 +623,7 @@ export default function Procurement() {
     if (!selectedProcurement) return;
     setIsExtracting(true);
     try {
-      const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').single();
+      const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').maybeSingle();
       const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
       const { generateAIDraft } = await import('../lib/aiService');
       
@@ -660,7 +665,7 @@ export default function Procurement() {
     try {
       const { generateProcurementDoc } = await import('../lib/ProcurementDocGenerator');
       
-      const { data: settings } = await supabase.from('settings').select('director_name').single();
+      const { data: settings } = await supabase.from('settings').select('director_name').maybeSingle();
       
       const officer = teachers.find(t => t.id === selectedProcurement.officer_id);
       const officerName = officer ? `${officer.prefix}${officer.first_name} ${officer.last_name}` : '';
@@ -1070,7 +1075,7 @@ export default function Procurement() {
                       if (!newProcurement.project_name) return alert('กรุณาระบุชื่อรายการจัดซื้อก่อนครับ');
                       setIsExtracting(true);
                       try {
-                        const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').single();
+                        const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').maybeSingle();
                         const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
                         const { generateAIDraft } = await import('../lib/aiService');
                         const prompt = `เขียน "เหตุผลความจำเป็น" ในการจัดซื้อจัดจ้างสำหรับรายการ "${newProcurement.project_name}" เพื่อใช้ในโรงเรียนบ้านควนโคกยา ให้มีความยาวประมาณ 2-3 บรรทัด สำนวนราชการไทย`;
