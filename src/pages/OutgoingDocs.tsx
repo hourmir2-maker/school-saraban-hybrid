@@ -194,7 +194,9 @@ export default function OutgoingDocs() {
       }
     });
     
-    return `${prefix}${maxNum + 1}`;
+    const startSeq = settings?.start_outgoing_seq || 1;
+    const finalNext = Math.max(maxNum + 1, startSeq);
+    return `${prefix}${finalNext}`;
   };
 
   const handleAiDraft = async (incoming: any = null) => {
@@ -600,7 +602,7 @@ ${userDetail}
               </div>
               <div style="display: flex; font-weight: normal !important; align-items: flex-start; margin-bottom: 0.1cm;">
                 <span style="white-space: nowrap; width: 1.2cm;">เรียน</span>
-                <span style="flex-grow: 1;">${toThaiNumerals(data.to_agency || '')}</span>
+                <span style="flex-grow: 1;">${(data.to_agency || '').split('\n').map((l: string) => toThaiNumerals(l)).join('<br/>')}</span>
               </div>
               ${referenceLines.filter((l: string) => l.trim() !== '').length > 0 ? `
                 <div style="display: flex; font-weight: normal !important; align-items: flex-start; margin-bottom: 0.1cm;">
@@ -836,20 +838,18 @@ ${userDetail}
         const docDateObj = new Date(formData.doc_date);
         const docYear = docDateObj.getFullYear() + 543;
         
-        const { data: seqData } = await supabase
-          .from('outgoing_docs')
-          .select('doc_sequence')
-          .eq('doc_year', docYear)
-          .order('doc_sequence', { ascending: false })
-          .limit(1);
-        
-        const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+        let query = supabase.from('outgoing_docs').select('doc_sequence').eq('doc_year', docYear).order('doc_sequence', { ascending: false }).limit(1);
         const schoolId = localStorage.getItem('active_school_id');
-
-        let settingsQuery = supabase.from('settings').select('school_doc_prefix');
+        if (schoolId) query = query.eq('school_id', schoolId);
+        const { data: seqData } = await query;
+        
+        let settingsQuery = supabase.from('settings').select('school_doc_prefix, start_outgoing_seq');
         if (schoolId) settingsQuery = settingsQuery.eq('school_id', schoolId);
         const { data: setts } = await settingsQuery.maybeSingle();
 
+        const startSeq = setts?.start_outgoing_seq || 1;
+        const docSeq = (seqData && seqData.length > 0) ? Math.max(Number(seqData[0].doc_sequence) + 1, startSeq) : startSeq;
+        
         const prefix = setts?.school_doc_prefix || 'ศธ 04225.016/';
         const finalDocNum = formData.doc_number.trim() || `${prefix}${docSeq}`;
 
@@ -898,14 +898,17 @@ ${userDetail}
       const docYear = docDateObj.getFullYear() + 543;
 
       // ค้นหา sequence ถัดไปของปีนี้ ณ จังหวะเซฟจริง
-      const { data: seqData } = await supabase
+      let seqQuery = supabase
         .from('outgoing_docs')
         .select('doc_sequence')
         .eq('doc_year', docYear)
         .order('doc_sequence', { ascending: false })
         .limit(1);
+      if (profile?.school_id) seqQuery = seqQuery.eq('school_id', profile.school_id);
+      const { data: seqData } = await seqQuery;
       
-      const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+      const startSeq = settings?.start_outgoing_seq || 1;
+      const docSeq = (seqData && seqData.length > 0) ? Math.max(Number(seqData[0].doc_sequence) + 1, startSeq) : startSeq;
       const prefix = settings?.school_doc_prefix || 'ศธ 04225.016/';
       const finalDocNumber = formData.doc_number.trim() || `${prefix}${docSeq}`;
 
@@ -1227,8 +1230,8 @@ ${userDetail}
               <input type="text" placeholder="ระบุชื่อเรื่อง" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-700" required value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 ml-1">เรียน (ผู้รับ)</label>
-              <input type="text" placeholder="เช่น ผู้อำนวยการสำนักงานเขต..." className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-700" required value={formData.to_agency} onChange={e => setFormData({...formData, to_agency: e.target.value})} />
+              <label className="text-[10px] font-bold text-slate-500 ml-1">เรียน (ผู้รับ / ที่อยู่ปลายทาง)</label>
+              <textarea placeholder="เช่น ผู้อำนวยการสำนักงานเขต...\n123 ถนนเพชรเกษม ตำบลหาดใหญ่\nอำเภอหาดใหญ่ จังหวัดสงขลา 90110" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-700" rows={3} required value={formData.to_agency} onChange={e => setFormData({...formData, to_agency: e.target.value})} />
             </div>
             <div className="space-y-4">
               <div className="space-y-1">

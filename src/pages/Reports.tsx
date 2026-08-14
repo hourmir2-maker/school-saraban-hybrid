@@ -426,6 +426,57 @@ export default function Reports() {
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
+  const efficiencyRate = stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0;
+
+  const exportTableToExcel = async (table: string, fileName: string) => {
+    try {
+      const schoolId = getSchoolId();
+      let query = supabase.from(table).select('*');
+      if (schoolId) query = query.eq('school_id', schoolId);
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      XLSX.writeFile(wb, `${fileName}.xlsx`);
+    } catch (err: any) {
+      alert('Export failed: ' + err.message);
+    }
+  };
+
+  const reportCards = [
+    {
+      title: "งานสารบรรณ (Admin Docs)",
+      description: "สรุปทะเบียนหนังสือรับ-ส่ง และสถิติเอกสาร",
+      icon: <FileText className="text-blue-500" />,
+      color: "bg-blue-50",
+      actions: [
+        { label: "Excel หนังสือรับ", onClick: () => exportTableToExcel('incoming_docs', 'ทะเบียนหนังสือรับ') },      
+        { label: "Excel หนังสือส่ง", onClick: () => exportTableToExcel('outgoing_docs', 'ทะเบียนหนังสือส่ง') }       
+      ]
+    },
+    {
+      title: "บริหารงานบุคคล (HR)",
+      description: "รายงานการมอบหมายงาน และสถิตัครู",
+      icon: <Users className="text-purple-500" />,
+      color: "bg-purple-50",
+      actions: [
+        { label: "สรุปการมอบหมายงาน", onClick: () => exportTableToExcel('doc_assignments', 'รายงานการมอบหมายงาน') }, 
+        { label: "ทะเบียนประวัติครู", onClick: () => exportTableToExcel('teachers', 'ทะเบียนครูบุคลากร') }
+      ]
+    },
+    {
+      title: "กิจการนักเรียน (Students)",
+      description: "สถิติการมาเรียน และข้อมูลพื้นฐานนักเรียน",
+      icon: <Users className="text-green-500" />,
+      color: "bg-green-50",
+      actions: [
+        { label: "ข้อมูลนักเรียนรายบุคคล", onClick: () => exportTableToExcel('students', 'ข้อมูลนักเรียน') },        
+        { label: "สถิติการมาเรียน (LEC)", onClick: () => alert('ฟีเจอร์นี้เปิดใช้งานในหน้า LEC Reports') }      
+      ]
+    }
+  ];
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -643,6 +694,66 @@ export default function Reports() {
           </div>
         </div>
       )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {reportCards.map((card, i) => (
+          <div key={i} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm flex flex-col h-full">
+            <div className={`w-16 h-16 ${card.color} rounded-[24px] flex items-center justify-center mb-6`}>    
+              {card.icon}
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">{card.title}</h3>
+            <p className="text-sm text-slate-400 font-medium mb-8 leading-relaxed">{card.description}</p>       
+
+            <div className="mt-auto space-y-3">
+              {card.actions.map((action, j) => (
+                <button
+                  key={j}
+                  onClick={action.onClick}
+                  className="w-full py-4 px-6 bg-slate-50 hover:bg-brand-primary hover:text-white rounded-2xl font-bold text-sm text-slate-600 flex items-center justify-between transition-all group"
+                >
+                  <span className="flex items-center gap-2">
+                    <FileSpreadsheet size={16} /> {action.label}
+                  </span>
+                  <ChevronRight size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />   
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Advanced Analytics Banner */}
+      <div className="bg-slate-800 p-10 rounded-[48px] text-white overflow-hidden relative shadow-2xl mt-8">
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-white/10 rounded-2xl">
+              <TrendingUp size={24} />
+            </div>
+            <h2 className="text-2xl font-black">Smart Analytics Engine</h2>
+          </div>
+          <p className="text-white/60 font-bold max-w-lg mb-8">
+            ระบบวิเคราะห์ข้อมูลขั้นสูงกำลังประมวลผลแนวโน้มการมาเรียนและประสิทธิภาพการทำงานของบุคลากร เพื่อช่วยในการตัดสินใจเชิงกลยุทธ์สำหรับผู้บริหาร
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
+            <div>
+              <div className="text-4xl font-black mb-1">{efficiencyRate}%</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">อัตราความสำเร็จ</div>
+            </div>
+            <div>
+              <div className="text-4xl font-black mb-1">{stats.incomingCount + stats.outgoingCount + stats.orderCount + stats.memoCount}</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">จำนวนเอกสารที่ดำเนินการ</div>
+            </div>
+            <div>
+              <div className="text-4xl font-black mb-1">{stats.studentCount}</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">นักเรียนที่กำลังศึกษา</div>
+            </div>
+          </div>
+        </div>
+        <div className="absolute -right-20 -bottom-20 w-96 h-96 bg-brand-primary/20 rounded-full blur-[100px]"></div>
+        <div className="absolute top-10 right-10 opacity-10">
+           <TrendingUp size={200} />
+        </div>
+      </div>
     </div>
   );
 }
