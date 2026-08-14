@@ -1,0 +1,170 @@
+declare const process: any;
+import { createClient } from '@supabase/supabase-js';
+import zlib from 'zlib';
+
+async function sendTelegramDocument(token: string, chatId: number, fileBuffer: Buffer, filename: string, caption: string): Promise<any> {
+  try {
+    const formData = new FormData();
+    formData.append('chat_id', chatId.toString());
+    formData.append('caption', caption);
+    formData.append('parse_mode', 'HTML');
+
+    const blob = new Blob([new Uint8Array(fileBuffer)], { type: 'application/gzip' });
+    formData.append('document', blob, filename);
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+      method: 'POST',
+      body: formData
+    });
+    return await res.json();
+  } catch (err) {
+    console.error('[WEEKLY-BACKUP] sendTelegramDocument error:', err);
+    return null;
+  }
+}
+
+function getThaiDateStr(): string {
+  const d = new Date();
+  const year = d.getFullYear() + 543;
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  const authHeader = req.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
+  try {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseKey) {
+      return new Response(JSON.stringify({ error: 'Missing Supabase config' }), { status: 500 });
+    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: allSettings } = await supabase
+      .from('settings')
+      .select('school_id, school_name, telegram_bot_token, telegram_group_id');
+
+    if (!allSettings || allSettings.length === 0) {
+      return new Response(JSON.stringify({ error: 'No school settings found' }), { status: 400 });
+    }
+
+    let totalBackupSent = 0;
+
+    for (const setting of allSettings) {
+      const { school_id: schoolId, school_name: schoolNameProp, telegram_bot_token: botToken, telegram_group_id: rawGroupId } = setting;
+      if (!botToken) continue;
+
+      const schoolName = schoolNameProp || 'สถานศึกษา';
+
+      const tablesToBackup = [
+        'settings',
+        'profiles',
+        'teachers',
+        'incoming_docs',
+        'outgoing_docs',
+        'orders',
+        'memos',
+        'utilities',
+        'procurement_projects',
+        'service_area_students'
+      ];
+
+      const backupPayload: Record<string, any> = {
+        backup_version: '1.0',
+        exported_at: new Date().toISOString(),
+        school_name: schoolName,
+        school_id: schoolId,
+        data: {}
+      };
+
+      let totalRecords = 0;
+
+      for (const table of tablesToBackup) {
+        try {
+          let q = supabase.from(table).select('*');
+          if (schoolId) {
+            q = q.eq('school_id', schoolId);
+          }
+          const { data, error } = await q;
+          if (!error && data) {
+            backupPayload.data[table] = data;
+            totalRecords += data.length;
+          } else {
+            backupPayload.data[table] = [];
+          }
+        } catch {
+          backupPayload.data[table] = [];
+        }
+      }
+
+      const jsonString = JSON.stringify(backupPayload, null, 2);
+      const jsonBuffer = Buffer.from(jsonString, 'utf-8');
+      const gzipBuffer = zlib.gzipSync(jsonBuffer);
+
+      const thaiDateStr = getThaiDateStr();
+      const fileName = `backup_${schoolName.replace(/\s+/g, '_')}_${thaiDateStr}.json.gz`;
+
+      const sizeKb = (gzipBuffer.length / 1024).toFixed(1);
+      const rawSizeKb = (jsonBuffer.length / 1024).toFixed(1);
+
+      const caption = `💾 <b>สำรองข้อมูลระบบสารบรรณประจำสัปดาห์</b>\n` +
+        `🏫 <b>${schoolName}</b>\n` +
+        `📅 <b>วันที่:</b> ${thaiDateStr}\n` +
+        `📊 <b>จำนวนข้อมูลทั้งหมด:</b> ${totalRecords} รายการ\n` +
+        `📦 <b>ขนาดไฟล์ (.json.gz):</b> ${sizeKb} KB (บีบอัดจาก ${rawSizeKb} KB)\n\n` +
+        `🔐 <i>โปรดเก็บรักษาไฟล์นี้ไว้ในที่ปลอดภัย สำหรับกู้คืนข้อมูลระบบในอนาคต</i>`;
+
+      let adminQuery = supabase
+        .from('profiles')
+        .select('telegram_chat_id, role')
+        .in('role', ['admin', 'director'])
+        .not('telegram_chat_id', 'is', null);
+
+      if (schoolId) {
+        adminQuery = adminQuery.eq('school_id', schoolId);
+      }
+
+      const { data: admins } = await adminQuery;
+      const recipientChatIds = new Set<number>();
+
+      if (admins && admins.length > 0) {
+        for (const admin of admins) {
+          if (admin.telegram_chat_id) {
+            const cid = parseInt(admin.telegram_chat_id.trim());
+            if (!isNaN(cid)) recipientChatIds.add(cid);
+          }
+        }
+      }
+
+      if (recipientChatIds.size === 0 && rawGroupId) {
+        const centralGroupId = rawGroupId.split('|')[0]?.trim();
+        if (centralGroupId) {
+          const cid = parseInt(centralGroupId);
+          if (!isNaN(cid)) recipientChatIds.add(cid);
+        }
+      }
+
+      for (const chatId of recipientChatIds) {
+        const res = await sendTelegramDocument(botToken, chatId, gzipBuffer, fileName, caption);
+        if (res && res.ok) totalBackupSent++;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      sent_to_users: totalBackupSent,
+      timestamp: new Date().toISOString()
+    }), { status: 200 });
+
+  } catch (err: any) {
+    console.error('[WEEKLY-BACKUP] Error:', err);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+  }
+}

@@ -47,6 +47,23 @@ export async function callGeminiAPI(
     retryCount = 3
   } = options;
 
+  let finalSystemInstruction = systemInstruction || '';
+  try {
+    const activeSchoolId = localStorage.getItem('active_school_id');
+    let settingsQuery = supabase.from('settings').select('custom_sop');
+    if (activeSchoolId) {
+      settingsQuery = settingsQuery.eq('school_id', activeSchoolId);
+    }
+    const { data: settingsData } = await settingsQuery.maybeSingle();
+    if (settingsData?.custom_sop && settingsData.custom_sop.trim() !== '') {
+      finalSystemInstruction = finalSystemInstruction 
+        ? `${finalSystemInstruction}\n\n[แนวปฏิบัติและข้อกำหนดพิเศษของโรงเรียน (SOP)]:\n${settingsData.custom_sop}`
+        : settingsData.custom_sop;
+    }
+  } catch (e) {
+    console.error("Error fetching custom_sop for Gemini API:", e);
+  }
+
   const keys = getApiKeyList(apiKey);
   if (keys.length === 0) throw new Error("กรุณาตั้งค่า Gemini API Key");
 
@@ -83,9 +100,9 @@ export async function callGeminiAPI(
             }
           };
 
-          if (systemInstruction) {
+          if (finalSystemInstruction) {
             body.systemInstruction = {
-              parts: [{ text: systemInstruction }]
+              parts: [{ text: finalSystemInstruction }]
             };
           }
 

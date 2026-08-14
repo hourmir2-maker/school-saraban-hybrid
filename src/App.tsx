@@ -21,6 +21,7 @@ import SchoolApprovals from './pages/SchoolApprovals';
 import IdentityFooter from './components/IdentityFooter';
 import ComingSoon from './components/ComingSoon';
 import ResetPasswordModal from './components/ResetPasswordModal';
+import ToastContainer from './components/ToastContainer';
 
 import Students from './pages/Students';
 import Attendance from './pages/Attendance';
@@ -580,6 +581,9 @@ function App() {
       {showPasswordReset && (
         <ResetPasswordModal onClose={() => setShowPasswordReset(false)} />
       )}
+
+      {/* ===== Toast Container ===== */}
+      <ToastContainer />
     </div>
   );
 }

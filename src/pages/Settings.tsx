@@ -43,6 +43,7 @@ export default function Settings() {
     telegram_group_id_proposal: '',
     gemini_api_key: '',
     ai_cowork_api_key: '',
+    custom_sop: '',
     gas_url: ''
   });
 
@@ -103,6 +104,7 @@ export default function Settings() {
         const [centralId, proposalId] = (data.telegram_group_id || '').split('|');
         setSettings({
           ...data,
+          custom_sop: data.custom_sop || '',
           is_line_enabled: data.is_line_enabled ?? true,
           gas_url: gasUrl,
           telegram_group_id_central: centralId || '',

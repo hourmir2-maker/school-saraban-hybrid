@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { getAccurateNextSequence } from '../lib/docSequence';
+import { toast } from '../lib/toast';
 import { uploadFileToDrive, deleteFileFromDrive, uploadToSupabase, deleteFromSupabase } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { sendLineNotification, sendInteractiveFlexMessage, sendBulkFlexCarousel } from '../lib/lineNotify';
@@ -23,6 +25,11 @@ import {
   Shield
 } from 'lucide-react';
 
+const toArabic = (str: string) => {
+  if (!str) return '';
+  return str.replace(/[๐-๙]/g, d => '๐๑๒๓๔๕๖๗๘๙'.indexOf(d).toString());
+};
+
 export default function IncomingDocs() {
   const { user, profile } = useAuth();
   const [docs, setDocs] = useState<any[]>([]);
@@ -31,6 +38,7 @@ export default function IncomingDocs() {
   const [selectedYear, setSelectedYear] = useState<number | null>(currentYearBE);
   const [latestNumber, setLatestNumber] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'pending' | 'deadline'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -40,15 +48,9 @@ export default function IncomingDocs() {
   const openNewDocModal = async () => {
     setIsModalOpen(true);
     const currentYear = new Date().getFullYear() + 543;
+    const schoolId = localStorage.getItem('active_school_id');
     try {
-      const { data: seqData } = await supabase
-        .from('incoming_docs')
-        .select('doc_sequence')
-        .eq('doc_year', currentYear)
-        .order('doc_sequence', { ascending: false })
-        .limit(1);
-      
-      const nextSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+      const nextSeq = await getAccurateNextSequence(supabase, 'incoming_docs', currentYear, 1, schoolId);
       setFormData(prev => ({
         ...prev,
         doc_number: nextSeq.toString(),
