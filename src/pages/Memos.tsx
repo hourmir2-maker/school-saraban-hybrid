@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { uploadFile, deleteFileFromDrive, uploadFileToDrive, uploadToSupabase } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { sendLineNotification, sendInteractiveFlexMessage } from '../lib/lineNotify';
+import { sendTelegramNotification } from '../lib/telegramNotify';
 import { generateAIDraft } from '../lib/aiService';
 import Modal from '../components/Modal';
 import { 
@@ -136,8 +137,9 @@ export default function Memos() {
     const targetYear = docDateObj.getFullYear() + 543;
     
     const yearDocs = docs.filter(d => d.doc_year === targetYear);
+    const startSeq = settings?.start_memo_seq || 1;
     if (yearDocs.length === 0) {
-      return `1/${targetYear}`;
+      return `${startSeq}/${targetYear}`;
     }
     
     let maxNum = 0;
@@ -154,7 +156,8 @@ export default function Memos() {
         }
       }
     });
-    return `${maxNum + 1}/${targetYear}`;
+    const finalNext = Math.max(maxNum + 1, startSeq);
+    return `${finalNext}/${targetYear}`;
   };
 
   async function handleStatusUpdate(id: string, newStatus: string) {
@@ -568,15 +571,13 @@ export default function Memos() {
         const docDateObj = new Date(formData.memo_date || new Date());
         const docYear = docDateObj.getFullYear() + 543;
         
-        const { data: seqData } = await supabase
-          .from('memos')
-          .select('doc_sequence')
-          .eq('doc_year', docYear)
-          .order('doc_sequence', { ascending: false })
-          .limit(1);
-        
-        const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+        let query = supabase.from('memos').select('doc_sequence').eq('doc_year', docYear).order('doc_sequence', { ascending: false }).limit(1);
         const schoolId = localStorage.getItem('active_school_id');
+        if (schoolId) query = query.eq('school_id', schoolId);
+        const { data: seqData } = await query;
+        
+        const startSeq = settings?.start_memo_seq || 1;
+        const docSeq = (seqData && seqData.length > 0) ? Math.max(Number(seqData[0].doc_sequence) + 1, startSeq) : startSeq;
         const finalDocNum = formData.memo_number.trim() || `${docSeq}/${docYear}`;
 
         const { error } = await supabase.from('memos').insert([{
@@ -623,15 +624,32 @@ export default function Memos() {
       const docYear = docDateObj.getFullYear() + 543;
 
       // ค้นหา sequence ถัดไป
-      const { data: seqData } = await supabase
+      let seqQuery = supabase
         .from('memos')
-        .select('doc_sequence')
+        .select('doc_sequence, memo_number')
         .eq('doc_year', docYear)
         .order('doc_sequence', { ascending: false })
-        .limit(1);
+        .limit(10);
+      if (profile?.school_id) seqQuery = seqQuery.eq('school_id', profile.school_id);
+      const { data: seqData } = await seqQuery;
       
-      const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
-      const finalMemoNumber = formData.memo_number.trim() || `${docSeq}/${docYear}`;
+      let maxSeqFromDB = 0;
+      (seqData || []).forEach(sd => {
+        if (sd.doc_sequence && Number(sd.doc_sequence) > maxSeqFromDB) {
+          maxSeqFromDB = Number(sd.doc_sequence);
+        } else if (sd.memo_number) {
+          const m = sd.memo_number.match(/^(\d+)/);
+          if (m) {
+            const n = parseInt(m[1], 10);
+            if (n > maxSeqFromDB) maxSeqFromDB = n;
+          }
+        }
+      });
+      
+      const startSeq = settings?.start_memo_seq || 1;
+      const docSeq = Math.max(maxSeqFromDB + 1, startSeq);
+      const calculatedNum = `${docSeq}/${docYear}`;
+      const finalMemoNumber = formData.memo_number.trim() && formData.memo_number.trim() !== `${maxSeqFromDB}/${docYear}` ? formData.memo_number.trim() : calculatedNum;
 
       const { data: insertedDocs, error } = await supabase.from('memos').insert([{ 
         school_id: profile?.school_id,
@@ -673,6 +691,18 @@ export default function Memos() {
           lineMessage,
           lineActions
         );
+
+        try {
+          const tgMsg = `📝 <b>เสนออนุมัติบันทึกข้อความ</b>\n\n• <b>เรื่อง</b>: ${formData.subject}\n• <b>ผู้เสนอ</b>: ${formData.requester}\n• <b>หน่วยงาน</b>: ${formData.department}\n• <b>เลขที่ร่างบันทึก</b>: ${finalMemoNumber}\n\n📄 <a href="${file_url || '#'}">เปิดดูร่างบันทึก</a>`;
+          const tgReplyMarkup = {
+            inline_keyboard: [[
+              { text: '✅ อนุมัติลงนาม (Telegram)', callback_data: `action=approve_doc&type=memo&id=${insertedDoc?.id || ''}` }
+            ]]
+          };
+          await sendTelegramNotification(tgMsg, 'proposal', tgReplyMarkup);
+        } catch (tgErr) {
+          console.error('[TELEGRAM NOTIFY ERROR]', tgErr);
+        }
       } else {
         const lineMessage = `เลขที่บันทึก: ${finalMemoNumber}\nเรื่อง: ${formData.subject}\nผู้เสนอ: ${formData.requester}`;
         const lineActions = file_url ? [{ label: '📄 ดูเอกสาร', type: 'uri' as const, uri: file_url }] : [];

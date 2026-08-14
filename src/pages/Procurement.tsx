@@ -1308,26 +1308,32 @@ export default function Procurement() {
               {/* Left: Document List */}
               <div className="w-full md:w-80 border-r border-slate-50 overflow-y-auto p-4 space-y-2 bg-slate-50/20">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-2 block">รายการเอกสารในชุด</label>
-                {PROCUREMENT_DOCS.map(doc => (
-                  <button 
-                    key={doc.id}
-                    onClick={() => {
-                      setActiveDocId(doc.id);
-                      handleAIDraftDocument(doc.id); // ใช้ id แทนชื่อเพื่อความแม่นยำ
-                    }}
-                    className={`w-full text-left p-4 rounded-[24px] hover:bg-white hover:shadow-md transition-all group border ${activeDocId === doc.id ? 'bg-white shadow-md border-slate-100' : 'border-transparent hover:border-slate-50'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center transition-colors ${activeDocId === doc.id ? 'text-brand-primary' : 'text-slate-400 group-hover:text-brand-primary'}`}>
-                        {doc.icon}
-                      </div>
-                      <div>
-                        <div className="text-xs font-black text-slate-700">{doc.name}</div>
-                        <div className="text-[9px] font-bold text-slate-400 uppercase mt-0.5 line-clamp-1">{doc.description}</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                {(() => {
+                   const isW119 = selectedProcurement.document_set_id === 'w119';
+                   const displayedDocs = isW119
+                     ? [{ id: 'w119_report', name: 'รายงานขอความเห็นชอบและเบิกจ่าย (ว.119)', icon: <FileCheck className="text-emerald-500" size={18} />, description: 'บันทึกข้อความขออนุมัติและเบิกจ่ายเงินในใบเดียว' }]
+                     : PROCUREMENT_DOCS;
+                   return displayedDocs.map(doc => (
+                     <button 
+                       key={doc.id}
+                       onClick={() => {
+                         setActiveDocId(doc.id);
+                         handleAIDraftDocument(doc.id);
+                       }}
+                       className={`w-full text-left p-4 rounded-[24px] hover:bg-white hover:shadow-md transition-all group border ${activeDocId === doc.id ? 'bg-white shadow-md border-slate-100' : 'border-transparent hover:border-slate-50'}`}
+                     >
+                       <div className="flex items-center gap-3">
+                         <div className={`w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center transition-colors ${activeDocId === doc.id ? 'text-brand-primary' : 'text-slate-400 group-hover:text-brand-primary'}`}>
+                           {doc.icon}
+                         </div>
+                         <div>
+                           <div className="text-xs font-black text-slate-700">{doc.name}</div>
+                           <div className="text-[9px] font-bold text-slate-400 uppercase mt-0.5 line-clamp-1">{doc.description}</div>
+                         </div>
+                       </div>
+                     </button>
+                   ));
+                 })()}
               </div>
 
               {/* Right: Preview Area */}

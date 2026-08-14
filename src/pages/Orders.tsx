@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { uploadFile, deleteFileFromDrive, uploadFileToDrive, uploadToSupabase } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { sendLineNotification, sendInteractiveFlexMessage } from '../lib/lineNotify';
+import { sendTelegramNotification } from '../lib/telegramNotify';
 import { generateAIDraft } from '../lib/aiService';
 import Modal from '../components/Modal';
 import { 
@@ -508,6 +509,7 @@ export default function Orders() {
             
             <div class="footer-date-block">
               <div class="footer-date-content">
+
                 ${toThaiNumerals(fullDate)}
               </div>
             </div>
@@ -531,6 +533,32 @@ export default function Orders() {
     const win = window.open('', '_blank');
     win?.document.write(html);
     win?.document.close();
+  };
+
+  const getNextOrderNumber = (customDate = formData.order_date) => {
+    const docDateObj = new Date(customDate || new Date());
+    const targetYear = docDateObj.getFullYear() + 543;
+    
+    let maxNum = 0;
+    docs.forEach(d => {
+      if (!d.doc_year || Number(d.doc_year) === Number(targetYear)) {
+        if (d.doc_sequence && Number(d.doc_sequence) > maxNum) {
+          maxNum = Number(d.doc_sequence);
+        } else if (d.order_number && d.order_number !== 'รออนุมัติ') {
+          const match = d.order_number.match(/^(\d+)/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNum) {
+              maxNum = num;
+            }
+          }
+        }
+      }
+    });
+    
+    const startSeq = settings?.start_order_seq || 1;
+    const finalNext = Math.max(maxNum + 1, startSeq);
+    return `${finalNext}/${targetYear}`;
   };
 
   async function handleDelete(id: string) {
@@ -591,15 +619,13 @@ export default function Orders() {
         const docDateObj = new Date(formData.order_date || new Date());
         const docYear = docDateObj.getFullYear() + 543;
         
-        const { data: seqData } = await supabase
-          .from('orders')
-          .select('doc_sequence')
-          .eq('doc_year', docYear)
-          .order('doc_sequence', { ascending: false })
-          .limit(1);
-        
-        const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+        let query = supabase.from('orders').select('doc_sequence').eq('doc_year', docYear).order('doc_sequence', { ascending: false }).limit(1);
         const schoolId = localStorage.getItem('active_school_id');
+        if (schoolId) query = query.eq('school_id', schoolId);
+        const { data: seqData } = await query;
+        
+        const startSeq = settings?.start_order_seq || 1;
+        const docSeq = (seqData && seqData.length > 0) ? Math.max(Number(seqData[0].doc_sequence) + 1, startSeq) : startSeq;
         const finalDocNum = formData.order_number.trim() || `${docSeq}/${docYear}`;
 
         const { error } = await supabase.from('orders').insert([{
@@ -644,9 +670,38 @@ export default function Orders() {
       const orderDateObj = new Date(formData.order_date);
       const docYear = orderDateObj.getFullYear() + 543;
 
+      // ค้นหา sequence ถัดไปสำหรับคำสั่ง
+      let seqQuery = supabase
+        .from('orders')
+        .select('doc_sequence, order_number')
+        .eq('doc_year', docYear)
+        .order('doc_sequence', { ascending: false })
+        .limit(10);
+      if (profile?.school_id) seqQuery = seqQuery.eq('school_id', profile.school_id);
+      
+      const { data: seqDocs } = await seqQuery;
+
+      let maxSeqFromDB = 0;
+      (seqDocs || []).forEach(sd => {
+        if (sd.doc_sequence && Number(sd.doc_sequence) > maxSeqFromDB) {
+          maxSeqFromDB = Number(sd.doc_sequence);
+        } else if (sd.order_number) {
+          const m = sd.order_number.match(/^(\d+)/);
+          if (m) {
+            const n = parseInt(m[1], 10);
+            if (n > maxSeqFromDB) maxSeqFromDB = n;
+          }
+        }
+      });
+
+      const startSeq = settings?.start_order_seq || 1;
+      const docSeq = Math.max(maxSeqFromDB + 1, startSeq);
+      const calculatedNum = `${docSeq}/${docYear}`;
+      const finalOrderNum = formData.order_number.trim() && formData.order_number.trim() !== `${maxSeqFromDB}/${docYear}` ? formData.order_number.trim() : calculatedNum;
+
       const { data: insertedDocs, error } = await supabase.from('orders').insert([{ 
         school_id: profile?.school_id,
-        order_number: formData.order_number || 'รออนุมัติ',
+        order_number: finalOrderNum,
         subject: formData.subject,
         issuer: formData.issuer,
         order_date: formData.order_date,
@@ -654,7 +709,8 @@ export default function Orders() {
         file_url, 
         status: 'pending',
         created_by: user?.id,
-        doc_year: docYear
+        doc_year: docYear,
+        doc_sequence: docSeq
       }]).select();
 
       if (error) throw new Error(`บันทึกข้อมูลไม่สำเร็จ: ${error.message}`);
@@ -681,6 +737,19 @@ export default function Orders() {
         lineMessage,
         lineActions
       );
+
+      // ส่งการแจ้งเตือนทาง Telegram ไปยังกลุ่มเสนอ / ผอ.
+      try {
+        const tgMsg = `📋 <b>เสนออนุมัติคำสั่งแต่งตั้ง (คำสั่งใหม่)</b>\n\n• <b>เรื่อง</b>: ${formData.subject}\n• <b>ผู้ออกคำสั่ง</b>: ${formData.issuer}\n• <b>ผู้เสนอ</b>: ${profile?.display_name || 'ครูผู้รับผิดชอบ'}\n• <b>เลขที่ร่างคำสั่ง</b>: ${finalOrderNum}\n\n📄 <a href="${file_url || '#'}">เปิดดูร่างคำสั่ง</a>`;
+        const tgReplyMarkup = {
+          inline_keyboard: [[
+            { text: '✅ อนุมัติลงนาม (Telegram)', callback_data: `action=approve_doc&type=order&id=${insertedDoc?.id || ''}` }
+          ]]
+        };
+        await sendTelegramNotification(tgMsg, 'proposal', tgReplyMarkup);
+      } catch (tgErr) {
+        console.error('[TELEGRAM NOTIFY ERROR]', tgErr);
+      }
 
       setIsModalOpen(false);
       resetForm();
@@ -726,14 +795,12 @@ export default function Orders() {
 
       if (finalOrderNumber === 'รออนุมัติ' || !finalOrderNumber) {
         // ค้นหา sequence ถัดไปของปีปัจจุบันของคำสั่ง ณ จังหวะอนุมัติ
-        const { data: seqDocs } = await supabase
-          .from('orders')
-          .select('doc_sequence')
-          .eq('doc_year', docYear)
-          .order('doc_sequence', { ascending: false })
-          .limit(1);
+        let query = supabase.from('orders').select('doc_sequence').eq('doc_year', docYear).order('doc_sequence', { ascending: false }).limit(1);
+        if (profile?.school_id) query = query.eq('school_id', profile.school_id);
+        const { data: seqDocs } = await query;
           
-        docSeq = (seqDocs && seqDocs.length > 0) ? (Number(seqDocs[0].doc_sequence) + 1) : 1;
+        const startSeq = settings?.start_order_seq || 1;
+        docSeq = (seqDocs && seqDocs.length > 0) ? Math.max(Number(seqDocs[0].doc_sequence) + 1, startSeq) : startSeq;
         finalOrderNumber = `${docSeq}/${docYear}`;
       }
 
