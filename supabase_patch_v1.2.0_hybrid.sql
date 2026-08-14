@@ -105,3 +105,12 @@ ALTER TABLE athletics_registrations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all for authenticated users on athletics_registrations" ON athletics_registrations;
 CREATE POLICY "Allow all for authenticated users on athletics_registrations" ON athletics_registrations
   FOR ALL USING (auth.uid() IS NOT NULL);
+
+
+-- เพิ่มคอลัมน์ตั้งค่าเลขเริ่มต้นและหมวดหนังสือส่งในตาราง settings
+ALTER TABLE settings 
+  ADD COLUMN IF NOT EXISTS school_doc_prefix TEXT DEFAULT 'ศธ 04225.016/',
+  ADD COLUMN IF NOT EXISTS start_incoming_seq INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS start_outgoing_seq INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS start_memo_seq INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS start_order_seq INTEGER DEFAULT 1;

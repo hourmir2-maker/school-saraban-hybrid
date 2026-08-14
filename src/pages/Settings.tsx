@@ -44,6 +44,11 @@ export default function Settings() {
     gemini_api_key: '',
     ai_cowork_api_key: '',
     custom_sop: '',
+    start_incoming_seq: 1,
+    start_outgoing_seq: 1,
+    start_memo_seq: 1,
+    start_order_seq: 1,
+    school_doc_prefix: 'ศธ 04225.016/',
     gas_url: ''
   });
 
@@ -451,6 +456,74 @@ export default function Settings() {
                 onChange={e => setSettings({...settings, local_gov_name: e.target.value})}
                 placeholder="สพป.พัทลุง เขต 2 / ทต..."
               />
+            </div>
+
+            <div className="col-span-full space-y-3 pt-4 border-t border-slate-50">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                <CalendarDays size={16} className="text-brand-primary" /> การตั้งค่าหมวดเลขหนังสือและเลขเริ่มต้น (Document Prefix & Sequence)
+              </h4>
+              <p className="text-[10px] text-slate-400 font-bold ml-1">
+                กำหนดรหัสตัวเลขนำหน้าหนังสือราชการของโรงเรียน และเลขลำดับเริ่มต้นกรณีรันเลขต่อจากสมุดสารบรรณเดิม
+              </p>
+
+              <div className="space-y-1.5 pb-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-brand-primary ml-1">
+                  รหัสตัวเลขนำหน้าหนังสือส่ง (Outgoing Document Prefix)
+                </label>
+                <input 
+                  type="text" 
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary transition-all"
+                  value={settings.school_doc_prefix || ''}
+                  onChange={e => setSettings({...settings, school_doc_prefix: e.target.value})}
+                  placeholder="เช่น ศธ 04225.016/ หรือ ศธ 04153/"
+                />
+                <span className="text-[10px] text-slate-400 font-medium ml-1">
+                  * กำหนดค่าตัวเลขหมวดหนังสือส่งของโรงเรียน เช่น <code>ศธ 04225.016/</code> (ระบบจะนำไปสร้างเลขหนังสือส่ง เช่น <code>ศธ 04225.016/175</code>)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">เลขรับเริ่มต้น</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary"
+                    value={settings.start_incoming_seq || 1}
+                    onChange={e => setSettings({...settings, start_incoming_seq: parseInt(e.target.value) || 1})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">เลขส่งเริ่มต้น</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary"
+                    value={settings.start_outgoing_seq || 1}
+                    onChange={e => setSettings({...settings, start_outgoing_seq: parseInt(e.target.value) || 1})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">เลขบันทึกข้อความเริ่มต้น</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary"
+                    value={settings.start_memo_seq || 1}
+                    onChange={e => setSettings({...settings, start_memo_seq: parseInt(e.target.value) || 1})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">เลขคำสั่งเริ่มต้น</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary"
+                    value={settings.start_order_seq || 1}
+                    onChange={e => setSettings({...settings, start_order_seq: parseInt(e.target.value) || 1})}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="col-span-full space-y-1.5 pt-4 border-t border-slate-50">
