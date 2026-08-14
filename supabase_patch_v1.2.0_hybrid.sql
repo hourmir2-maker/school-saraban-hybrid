@@ -1,16 +1,16 @@
 -- ====================================================================
 -- SUPABASE MIGRATION PATCH V1.2.0 (FOR SCHOOL-SARABAN-HYBRID)
 -- Date: 2026-08-14
--- Description: Consolidated patch for v1.2.0 updates with school_id support (schools table)
+-- Description: Consolidated SQL migration patch for all v1.2.0 features with school_id support
 -- ====================================================================
 
--- 1. Settings Table Enhancements
+-- 1. Settings Table Enhancements (Custom SOP, LINE Toggle, Vision API Key)
 ALTER TABLE settings 
   ADD COLUMN IF NOT EXISTS custom_sop TEXT,
   ADD COLUMN IF NOT EXISTS is_line_enabled BOOLEAN DEFAULT true,
   ADD COLUMN IF NOT EXISTS vision_api_key TEXT;
 
--- 2. Incoming Documents Enhancements
+-- 2. Incoming Documents Enhancements (OCR Text, Deadline, Suggested Assignee, Reservations)
 ALTER TABLE incoming_docs 
   ADD COLUMN IF NOT EXISTS extracted_text TEXT,
   ADD COLUMN IF NOT EXISTS action_deadline TIMESTAMPTZ,
@@ -21,28 +21,34 @@ ALTER TABLE incoming_docs
   ADD COLUMN IF NOT EXISTS reserved_by_name TEXT,
   ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
 
--- 3. Outgoing Documents Enhancements
+-- 3. Outgoing Documents Enhancements (Telegram Reservation, File Attachments)
 ALTER TABLE outgoing_docs 
   ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS reserved_by_telegram_id TEXT,
   ADD COLUMN IF NOT EXISTS reserved_by_name TEXT,
   ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
 
--- 4. Orders Enhancements
+-- 4. Orders Enhancements (Telegram Reservation, File Attachments)
 ALTER TABLE orders 
   ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS reserved_by_telegram_id TEXT,
   ADD COLUMN IF NOT EXISTS reserved_by_name TEXT,
   ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
 
--- 5. Memos Enhancements
+-- 5. Memos Enhancements (Telegram Reservation, File Attachments)
 ALTER TABLE memos 
   ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS reserved_by_telegram_id TEXT,
   ADD COLUMN IF NOT EXISTS reserved_by_name TEXT,
   ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
 
--- 6. Knowledge Base & RAG Support (Multi-school enabled)
+-- 6. Service Area Students Enhancements (School Enrolled, Guardian Name, Class)
+ALTER TABLE service_area_students
+  ADD COLUMN IF NOT EXISTS school_enrolled TEXT,
+  ADD COLUMN IF NOT EXISTS guardian_name TEXT,
+  ADD COLUMN IF NOT EXISTS enroll_class TEXT;
+
+-- 7. Knowledge Base & RAG Support (Multi-school enabled)
 CREATE TABLE IF NOT EXISTS school_knowledge (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
@@ -59,7 +65,7 @@ DROP POLICY IF EXISTS "Allow all for authenticated users on school_knowledge" ON
 CREATE POLICY "Allow all for authenticated users on school_knowledge" ON school_knowledge
   FOR ALL USING (auth.uid() IS NOT NULL);
 
--- 7. Document Checklists Support
+-- 8. Document Checklists Support (AI Workflow Checklist & SOP)
 CREATE TABLE IF NOT EXISTS document_checklists (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
@@ -74,7 +80,7 @@ DROP POLICY IF EXISTS "Allow all for authenticated users on document_checklists"
 CREATE POLICY "Allow all for authenticated users on document_checklists" ON document_checklists
   FOR ALL USING (auth.uid() IS NOT NULL);
 
--- 8. Athletics Registration Support (Multi-school enabled)
+-- 9. Athletics Registration Support (Multi-school enabled)
 CREATE TABLE IF NOT EXISTS athletics_registrations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
