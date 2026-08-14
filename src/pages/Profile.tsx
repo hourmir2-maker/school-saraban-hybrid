@@ -46,14 +46,17 @@ export default function Profile() {
   async function fetchSettings(schoolId?: string | null) {
     const targetSchoolId = schoolId || localStorage.getItem('active_school_id');
     const isUUID = targetSchoolId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSchoolId) : false;
-    if (!targetSchoolId || !isUUID) return;
     
     try {
-      const { data } = await supabase
+      let query = supabase
         .from('settings')
-        .select('line_oa_link, telegram_bot_username, telegram_group_link')
-        .eq('school_id', targetSchoolId)
-        .maybeSingle();
+        .select('line_oa_link, telegram_bot_username, telegram_group_link');
+      
+      if (targetSchoolId && isUUID) {
+        query = query.eq('school_id', targetSchoolId);
+      }
+      
+      const { data } = await query.limit(1).maybeSingle();
       if (data) {
         setLineLink(data.line_oa_link || '');
         setTelegramBotUsername(data.telegram_bot_username || '');
@@ -204,9 +207,19 @@ export default function Profile() {
 
           {/* Telegram Connection Status */}
           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-4">
-             <div className="flex items-center gap-3">
-                <Send size={20} className="text-[#229ED9]" />
-                <p className="text-xs font-black text-slate-800 uppercase tracking-widest">การเชื่อมต่อ Telegram</p>
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Send size={20} className="text-[#229ED9]" />
+                  <p className="text-xs font-black text-slate-800 uppercase tracking-widest">การเชื่อมต่อ Telegram</p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => window.location.reload()} 
+                  className="text-[10px] font-black text-[#229ED9] hover:underline flex items-center gap-1 cursor-pointer"
+                  title="รีเฟรชเพื่ออัปเดตสถานะ"
+                >
+                  🔄 รีเฟรช
+                </button>
              </div>
              {profile?.telegram_chat_id ? (
                <div className="space-y-2">

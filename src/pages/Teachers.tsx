@@ -32,6 +32,8 @@ type Teacher = {
   photo_url: string;
   status: string;
   line_user_id?: string;
+  telegram_chat_id?: string;
+  telegram_username?: string;
 };
 
 type Duty = {
@@ -378,6 +380,15 @@ export default function Teachers() {
                   )}
                   {teacher.department && (
                     <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-full border border-blue-100">{teacher.department}</p>
+                  )}
+                  {teacher.telegram_chat_id ? (
+                    <span className="text-[8px] font-black text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-100">
+                      ✈️ ผูก Telegram แล้ว
+                    </span>
+                  ) : (
+                    <span className="text-[8px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                      ⚪ ยังไม่ผูก Telegram
+                    </span>
                   )}
                 </div>
                 

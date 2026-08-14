@@ -1,3 +1,19 @@
+
+-- เพิ่มคอลัมน์ Telegram / LINE ใน profiles
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS telegram_username TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS line_user_id TEXT;
+
+-- เพิ่มคอลัมน์ Telegram / LINE ใน teachers
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS telegram_username TEXT;
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS line_user_id TEXT;
+
+-- เพิ่มคอลัมน์ Telegram Bot / Group Link ใน settings
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS telegram_bot_username TEXT;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS telegram_group_link TEXT;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS line_oa_link TEXT;
+
 -- ====================================================================
 -- 🏫 SUPABASE SQL MIGRATION PATCH: COMPLETE MODULES FOR HYBRID (V1.3.2)
 -- รวมการแก้ไข:
