@@ -620,17 +620,24 @@ export default function Reports() {
                 <PieChartIcon className="text-indigo-500" size={20} />
                 สัดส่วนนักเรียนตามระดับชั้น
               </h3>
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RePieChart>
-                    <Pie data={studentDistData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                      {studentDistData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </RePieChart>
-                </ResponsiveContainer>
+              <div className="h-64 w-full flex items-center justify-center">
+                {studentDistData.length === 0 ? (
+                  <div className="text-center text-slate-400 font-bold text-xs py-10">
+                    <Users size={36} className="mx-auto mb-2 opacity-30 text-indigo-400" />
+                    ยังไม่มีข้อมูลนักเรียนในปีการศึกษา พ.ศ. {selectedYear}
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RePieChart>
+                      <Pie data={studentDistData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                        {studentDistData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RePieChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
           </div>
