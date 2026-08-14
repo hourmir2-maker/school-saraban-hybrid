@@ -61,24 +61,8 @@ export default function AttendanceReport() {
         endDate = new Date(new Date(selectedDate).setDate(diff + 6)).toISOString().split('T')[0];
       }
 
-      // 1. ดึงสรุปผลผ่าน RPC (ประสิทธิภาพสูง)
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_attendance_summary', {
-        start_date: startDate,
-        end_date: endDate
-      });
-
-      if (!rpcError && rpcData && rpcData.length > 0) {
-        const res = rpcData[0];
-        setSummary({
-          present: Number(res.total_present),
-          absent: Number(res.total_absent),
-          late: Number(res.total_late),
-          total: Number(res.total_present) + Number(res.total_absent) + Number(res.total_late)
-        });
-      }
-
-      // 2. ดึงข้อมูลดิบมาแสดงในตารางตามปกติ
-      const { data, error } = await supabase
+      // 1. ดึงข้อมูลจากตาราง attendance ตามช่วงวันที่พร้อม school_id filter
+      let query = supabase
         .from('attendance')
         .select('*')
         .gte('date', startDate)
@@ -86,22 +70,24 @@ export default function AttendanceReport() {
         .order('date', { ascending: true })
         .order('class_level', { ascending: true });
 
+      const schoolId = localStorage.getItem('active_school_id');
+      if (schoolId) query = query.eq('school_id', schoolId);
+
+      const { data, error } = await query;
       if (error) throw error;
       setReportData(data || []);
 
-      // หาก RPC ล้มเหลว (เช่น ยังไม่ได้สร้าง) ให้ใช้การคำนวณฝั่ง Client เป็น Fallback
-      if (rpcError) {
-        const stats = (data || []).reduce((acc, curr) => ({
-          present: acc.present + (curr.summary?.present || 0),
-          absent: acc.absent + (curr.summary?.absent || 0),
-          late: acc.late + (curr.summary?.late || 0),
-        }), { present: 0, absent: 0, late: 0 });
+      // 2. คำนวณสรุปผลสถิติ
+      const stats = (data || []).reduce((acc, curr) => ({
+        present: acc.present + (Number(curr.summary?.present) || 0),
+        absent: acc.absent + (Number(curr.summary?.absent) || 0),
+        late: acc.late + (Number(curr.summary?.late) || 0),
+      }), { present: 0, absent: 0, late: 0 });
 
-        setSummary({
-          ...stats,
-          total: stats.present + stats.absent + stats.late
-        });
-      }
+      setSummary({
+        ...stats,
+        total: stats.present + stats.absent + stats.late
+      });
     } catch (err) {
       console.error('Fetch Report Error:', err);
     } finally {

@@ -753,7 +753,7 @@ export default function LibraryModule() {
                     </span>
                   </div>
                   <div className="h-[280px]">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={180}>
+                    <ResponsiveContainer width="100%" height={280} minWidth={0}>
                       <LineChart data={weeklyTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
@@ -776,7 +776,7 @@ export default function LibraryModule() {
                     <p className="text-[10px] text-slate-400 font-bold mt-0.5">วิเคราะห์สัดส่วนหนังสือในระบบ</p>
                   </div>
                   <div className="h-[200px] flex items-center justify-center relative">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={180}>
+                    <ResponsiveContainer width="100%" height={200} minWidth={0}>
                       <PieChart>
                         <Pie
                           data={finalCategoryData}

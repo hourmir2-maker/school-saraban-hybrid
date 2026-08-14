@@ -650,7 +650,7 @@ export default function Reports() {
               สถิติปริมาณงานเอกสารราชการรายเดือน (ประจำปี พ.ศ. {selectedYear})
             </h3>
             <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
+              <ResponsiveContainer width="100%" height={280} minWidth={0}>
                 <ReBarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="month" tick={{ fontSize: 11, fontWeight: 'bold' }} stroke="#94a3b8" />
@@ -678,7 +678,7 @@ export default function Reports() {
                     ยังไม่มีข้อมูลนักเรียนในปีการศึกษา พ.ศ. {selectedYear}
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
+                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
                     <RePieChart>
                       <Pie data={studentDistData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
                         {studentDistData.map((_, index) => (
