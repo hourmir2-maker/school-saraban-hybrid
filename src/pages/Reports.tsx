@@ -176,44 +176,90 @@ export default function Reports() {
     }
   }
 
-  async function fetchChartData() {
-    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    const mockMonthlyData = months.map(m => ({
-      month: m,
-      หนังสือรับ: Math.floor(Math.random() * 15) + 5,
-      หนังสือส่ง: Math.floor(Math.random() * 10) + 2,
-      คำสั่ง: Math.floor(Math.random() * 5) + 1,
-      บันทึกข้อความ: Math.floor(Math.random() * 12) + 3,
-    }));
-    setChartData(mockMonthlyData);
+    async function fetchChartData() {
+    try {
+      const year = selectedYear;
+      const yearNum = parseInt(year, 10) || (new Date().getFullYear() + 543);
+      const yearAD = yearNum - 543;
+      const schoolId = getSchoolId();
 
-    const schoolId = getSchoolId();
-    let stdQ = supabase.from('students').select('class_level').eq('status', 'active').eq('academic_year', selectedYear);
-    if (schoolId) stdQ = stdQ.eq('school_id', schoolId);
-    const { data: students } = await stdQ;
+      const startDate = `${yearAD}-01-01T00:00:00.000Z`;
+      const endDate = `${yearAD}-12-31T23:59:59.999Z`;
 
-    if (students && students.length > 0) {
-      const counts: Record<string, number> = {};
-      students.forEach(s => {
-        const cls = s.class_level || 'ไม่ระบุ';
-        counts[cls] = (counts[cls] || 0) + 1;
-      });
-      const dist = Object.keys(counts).map(key => ({
-        name: key,
-        value: counts[key]
+      // 1. ดึงข้อมูลจริงปริมาณงานเอกสารราชการรายเดือน 4 ประเภท
+      let incQ = supabase.from('incoming_docs').select('created_at, doc_date').gte('created_at', startDate).lte('created_at', endDate);
+      let outQ = supabase.from('outgoing_docs').select('created_at, doc_date').gte('created_at', startDate).lte('created_at', endDate);
+      let ordQ = supabase.from('orders').select('created_at, doc_date').gte('created_at', startDate).lte('created_at', endDate);
+      let memQ = supabase.from('memos').select('created_at, doc_date').gte('created_at', startDate).lte('created_at', endDate);
+
+      if (schoolId) {
+        incQ = incQ.eq('school_id', schoolId);
+        outQ = outQ.eq('school_id', schoolId);
+        ordQ = ordQ.eq('school_id', schoolId);
+        memQ = memQ.eq('school_id', schoolId);
+      }
+
+      const [incRes, outRes, ordRes, memRes] = await Promise.all([incQ, outQ, ordQ, memQ]);
+
+      const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      const realMonthly: any[] = months.map(m => ({
+        month: m,
+        'หนังสือรับ': 0,
+        'หนังสือส่ง': 0,
+        'คำสั่ง': 0,
+        'บันทึกข้อความ': 0
       }));
-      setStudentDistData(dist);
-    } else {
-      setStudentDistData([
-        { name: 'อนุบาล 2', value: 15 },
-        { name: 'อนุบาล 3', value: 18 },
-        { name: 'ป.1', value: 20 },
-        { name: 'ป.2', value: 22 },
-        { name: 'ป.3', value: 19 },
-        { name: 'ป.4', value: 25 },
-        { name: 'ป.5', value: 21 },
-        { name: 'ป.6', value: 24 },
-      ]);
+
+      const processMonth = (items: any[], key: string) => {
+        (items || []).forEach(item => {
+          const dateStr = item.doc_date || item.created_at;
+          if (dateStr) {
+            const d = new Date(dateStr);
+            const monthIdx = d.getMonth();
+            if (monthIdx >= 0 && monthIdx < 12) {
+              realMonthly[monthIdx][key] += 1;
+            }
+          }
+        });
+      };
+
+      processMonth(incRes.data || [], 'หนังสือรับ');
+      processMonth(outRes.data || [], 'หนังสือส่ง');
+      processMonth(ordRes.data || [], 'คำสั่ง');
+      processMonth(memRes.data || [], 'บันทึกข้อความ');
+
+      setChartData(realMonthly);
+
+      // 2. ดึงข้อมูลจริงสัดส่วนนักเรียนแยกตามระดับชั้น
+      let stdQ = supabase.from('students').select('class_level').eq('academic_year', selectedYear);
+      if (schoolId) stdQ = stdQ.eq('school_id', schoolId);
+      const { data: students } = await stdQ;
+
+      if (students && students.length > 0) {
+        const counts: Record<string, number> = {};
+        students.forEach(s => {
+          const cls = (s.class_level || 'ไม่ระบุ').trim();
+          counts[cls] = (counts[cls] || 0) + 1;
+        });
+
+        const order = ['อนุบาล 1', 'อนุบาล 2', 'อนุบาล 3', 'อ.1', 'อ.2', 'อ.3', 'ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6', 'ม.1', 'ม.2', 'ม.3'];
+        const sortedKeys = Object.keys(counts).sort((a, b) => {
+          const idxA = order.findIndex(o => a.includes(o));
+          const idxB = order.findIndex(o => b.includes(o));
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          return a.localeCompare(b, 'th');
+        });
+
+        const dist = sortedKeys.map(key => ({
+          name: key,
+          value: counts[key]
+        }));
+        setStudentDistData(dist);
+      } else {
+        setStudentDistData([]);
+      }
+    } catch (e) {
+      console.error('Error fetching real chart data:', e);
     }
   }
 
@@ -224,7 +270,6 @@ export default function Reports() {
       let query = supabase
         .from('students')
         .select('class_level, room, gender, religion')
-        .eq('status', 'active')
         .eq('academic_year', selectedYear);
 
       if (schoolId) query = query.eq('school_id', schoolId);
