@@ -36,6 +36,7 @@ export default function Memos() {
   const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
   const [selectedDocForAttach, setSelectedDocForAttach] = useState<any>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [isReserveMode, setIsReserveMode] = useState(false);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [selectedMemoForApproval, setSelectedMemoForApproval] = useState<any>(null);
   const [directorDecision, setDirectorDecision] = useState<'อนุมัติ' | 'ทราบ'>('อนุมัติ');
@@ -563,6 +564,41 @@ export default function Memos() {
     e.preventDefault();
     setIsSaving(true);
     try {
+      if (isReserveMode) {
+        const docDateObj = new Date(formData.memo_date || new Date());
+        const docYear = docDateObj.getFullYear() + 543;
+        
+        const { data: seqData } = await supabase
+          .from('memos')
+          .select('doc_sequence')
+          .eq('doc_year', docYear)
+          .order('doc_sequence', { ascending: false })
+          .limit(1);
+        
+        const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+        const schoolId = localStorage.getItem('active_school_id');
+        const finalDocNum = formData.memo_number.trim() || `${docSeq}/${docYear}`;
+
+        const { error } = await supabase.from('memos').insert([{
+          memo_number: finalDocNum,
+          subject: formData.subject,
+          memo_date: formData.memo_date || new Date().toISOString().split('T')[0],
+          doc_year: docYear,
+          doc_sequence: docSeq,
+          status: 'reserved',
+          is_reserved: true,
+          reserved_by_name: profile?.display_name || 'เจ้าหน้าที่',
+          school_id: schoolId
+        }]);
+
+        if (error) throw error;
+
+        alert(`🟡 จองเลขบันทึกข้อความสำเร็จ! เลขที่บันทึก: ${finalDocNum}`);
+        setIsModalOpen(false);
+        setIsReserveMode(false);
+        fetchDocs();
+        return;
+      }
       let file_url = '';
       if (selectedFile) {
         try {
@@ -783,6 +819,20 @@ export default function Memos() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="ออกเลขบันทึกข้อความและสร้างเอกสาร">
         <form onSubmit={handleSave} className="space-y-4 max-h-[80vh] overflow-y-auto px-1 pb-4 text-slate-700">
+
+          <div className="flex items-center gap-2 p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl shadow-xs">
+            <input 
+              type="checkbox" 
+              id="isReserveModeMem" 
+              checked={isReserveMode} 
+              onChange={e => setIsReserveMode(e.target.checked)}
+              className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
+            />
+            <label htmlFor="isReserveModeMem" className="text-xs font-bold text-amber-900 cursor-pointer select-none">
+              🟡 จองเลขไว้ก่อน (ยังไม่มีไฟล์เอกสาร - สามารถมาแนบไฟล์ย้อนหลังได้)
+            </label>
+          </div>
+
           <div className="bg-slate-50 p-4 rounded-2xl space-y-4 border border-slate-100">
             <div className="flex justify-between items-center">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><FileText size={14} /> ข้อมูลหัวบันทึก</h4>

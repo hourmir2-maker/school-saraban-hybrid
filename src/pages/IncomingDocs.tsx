@@ -44,6 +44,7 @@ export default function IncomingDocs() {
   const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
   const [selectedDocToAttach, setSelectedDocToAttach] = useState<any>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [isReserveMode, setIsReserveMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
@@ -346,6 +347,43 @@ export default function IncomingDocs() {
     e.preventDefault();
     setIsSaving(true);
     try {
+      if (isReserveMode) {
+        const docDateObj = new Date(formData.doc_date);
+        const docYear = docDateObj.getFullYear() + 543;
+        
+        const { data: seqData } = await supabase
+          .from('incoming_docs')
+          .select('doc_sequence')
+          .eq('doc_year', docYear)
+          .order('doc_sequence', { ascending: false })
+          .limit(1);
+        
+        const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+        const finalDocNum = formData.doc_number.trim() || docSeq.toString();
+        const schoolId = localStorage.getItem('active_school_id');
+
+        const { error } = await supabase.from('incoming_docs').insert([{
+          doc_number: finalDocNum,
+          from_agency: formData.from_agency || 'หน่วยงานภายนอก',
+          subject: formData.subject,
+          doc_date: formData.doc_date,
+          doc_year: docYear,
+          doc_sequence: docSeq,
+          status: 'reserved',
+          is_reserved: true,
+          reserved_by_name: profile?.display_name || 'เจ้าหน้าที่',
+          school_id: schoolId
+        }]);
+
+        if (error) throw error;
+
+        alert(`🟡 จองเลขรับหนังสือสำเร็จ! เลขรับที่: ${finalDocNum}`);
+        setIsModalOpen(false);
+        setIsReserveMode(false);
+        resetForm();
+        fetchDocs();
+        return;
+      }
       const sanitized = formData.subject.replace(/[\/\\?%*:|"<>]/g, '-').slice(0, 50);
       const prefix = `${formData.doc_number}_เรื่อง_${sanitized}`;
       let file_url = '';
@@ -628,6 +666,7 @@ export default function IncomingDocs() {
     setAttachments([]);
     setAssignForm({ teacher_id: '', instruction: '', stamp_page: 1 });
     setIsHolding(false);
+    setIsReserveMode(false);
   }
 
 
@@ -872,8 +911,22 @@ export default function IncomingDocs() {
       </div>
 
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="ลงรับหนังสือใหม่">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isReserveMode ? "🟡 จองเลขรับหนังสือ (ยังไม่มีไฟล์เอกสาร)" : "ลงรับหนังสือใหม่"}>
         <form onSubmit={handleSave} className="space-y-6">
+
+          <div className="flex items-center gap-2 p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl shadow-xs">
+            <input 
+              type="checkbox" 
+              id="isReserveModeInc" 
+              checked={isReserveMode} 
+              onChange={e => setIsReserveMode(e.target.checked)}
+              className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
+            />
+            <label htmlFor="isReserveModeInc" className="text-xs font-bold text-amber-900 cursor-pointer select-none">
+              🟡 จองเลขไว้ก่อน (ยังไม่มีไฟล์เอกสาร - สามารถมาแนบไฟล์ย้อนหลังได้)
+            </label>
+          </div>
+
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5 col-span-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-1">เลขที่รับ</label>
@@ -965,7 +1018,7 @@ export default function IncomingDocs() {
             </label>
           </div>
 
-          <button type="submit" disabled={isSaving || !mainFile} className="w-full bg-brand-primary text-white py-4.5 rounded-[24px] font-black text-lg flex items-center justify-center gap-3 shadow-xl shadow-green-100 hover:bg-green-700 transition-all disabled:opacity-50">
+          <button type="submit" disabled={isSaving || (!isReserveMode && !mainFile)} className="w-full bg-brand-primary text-white py-4.5 rounded-[24px] font-black text-lg flex items-center justify-center gap-3 shadow-xl shadow-green-100 hover:bg-green-700 transition-all disabled:opacity-50">
             {isSaving ? <Loader2 className="animate-spin" /> : <Save />} {isHolding ? 'บันทึกและพักรอเสนอ' : 'บันทึกและเสนอ ผอ. ทันที'}
           </button>
         </form>

@@ -36,6 +36,7 @@ export default function OutgoingDocs() {
   const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
   const [selectedDocForAttach, setSelectedDocForAttach] = useState<any>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [isReserveMode, setIsReserveMode] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<any>(null);
@@ -831,6 +832,48 @@ ${userDetail}
     e.preventDefault();
     setIsSaving(true);
     try {
+      if (isReserveMode) {
+        const docDateObj = new Date(formData.doc_date);
+        const docYear = docDateObj.getFullYear() + 543;
+        
+        const { data: seqData } = await supabase
+          .from('outgoing_docs')
+          .select('doc_sequence')
+          .eq('doc_year', docYear)
+          .order('doc_sequence', { ascending: false })
+          .limit(1);
+        
+        const docSeq = (seqData && seqData.length > 0) ? (Number(seqData[0].doc_sequence) + 1) : 1;
+        const schoolId = localStorage.getItem('active_school_id');
+
+        let settingsQuery = supabase.from('settings').select('school_doc_prefix');
+        if (schoolId) settingsQuery = settingsQuery.eq('school_id', schoolId);
+        const { data: setts } = await settingsQuery.maybeSingle();
+
+        const prefix = setts?.school_doc_prefix || 'ศธ 04225.016/';
+        const finalDocNum = formData.doc_number.trim() || `${prefix}${docSeq}`;
+
+        const { error } = await supabase.from('outgoing_docs').insert([{
+          doc_number: finalDocNum,
+          to_agency: formData.to_agency || 'หน่วยงานภายนอก',
+          subject: formData.subject,
+          doc_date: formData.doc_date,
+          doc_year: docYear,
+          doc_sequence: docSeq,
+          status: 'reserved',
+          is_reserved: true,
+          reserved_by_name: profile?.display_name || 'เจ้าหน้าที่',
+          school_id: schoolId
+        }]);
+
+        if (error) throw error;
+
+        alert(`🟡 จองเลขหนังสือส่งสำเร็จ! เลขที่หนังสือส่ง: ${finalDocNum}`);
+        setIsModalOpen(false);
+        setIsReserveMode(false);
+        fetchDocs();
+        return;
+      }
       let file_url = '';
       if (selectedFile) {
         try {
@@ -1148,6 +1191,20 @@ ${userDetail}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="ออกเลขหนังสือส่งและสร้างเอกสาร">
         <form onSubmit={handleSave} className="space-y-4 max-h-[80vh] overflow-y-auto px-1 pb-4 text-slate-700">
+
+          <div className="flex items-center gap-2 p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl shadow-xs">
+            <input 
+              type="checkbox" 
+              id="isReserveModeOut" 
+              checked={isReserveMode} 
+              onChange={e => setIsReserveMode(e.target.checked)}
+              className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
+            />
+            <label htmlFor="isReserveModeOut" className="text-xs font-bold text-amber-900 cursor-pointer select-none">
+              🟡 จองเลขไว้ก่อน (ยังไม่มีไฟล์เอกสาร - สามารถมาแนบไฟล์ย้อนหลังได้)
+            </label>
+          </div>
+
           <div className="bg-slate-50 p-4 rounded-2xl space-y-4 border border-slate-100">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><FileText size={14} /> ข้อมูลหัวหนังสือ</h4>
             <div className="grid grid-cols-2 gap-4">
