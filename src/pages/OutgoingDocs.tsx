@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { uploadFile, deleteFileFromDrive } from '../lib/storage';
+import { uploadFile, deleteFileFromDrive, uploadFileToDrive, uploadToSupabase } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { sendLineNotification, sendInteractiveFlexMessage } from '../lib/lineNotify';
 import Modal from '../components/Modal';
@@ -33,6 +33,9 @@ export default function OutgoingDocs() {
   const [latestNumber, setLatestNumber] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
+  const [selectedDocForAttach, setSelectedDocForAttach] = useState<any>(null);
+  const [attachFile, setAttachFile] = useState<File | null>(null);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<any>(null);
@@ -790,6 +793,40 @@ ${userDetail}
     }
   }
 
+  
+  const handleAttachFileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDocForAttach || !attachFile) {
+      alert('กรุณาเลือกไฟล์เอกสารที่ต้องการแนบ');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const ext = attachFile.name.split('.').pop() || 'pdf';
+      const sanitized = (selectedDocForAttach.subject || 'เอกสารส่ง').replace(/[\/\\?%*:|"<>]/g, '-').slice(0, 50);
+      const fileName = `หนังสือส่ง_${selectedDocForAttach.doc_number}_เรื่อง_${sanitized}.${ext}`;
+      const file_url = await uploadFileToDrive(attachFile, 'outgoing', fileName.replace('.' + ext, ''));
+
+      const { error } = await supabase.from('outgoing_docs').update({
+        file_url: file_url,
+        is_reserved: false,
+        status: 'pending'
+      }).eq('id', selectedDocForAttach.id);
+
+      if (error) throw error;
+
+      alert('แนบไฟล์เอกสารย้อนหลังเรียบร้อยแล้ว');
+      setIsAttachModalOpen(false);
+      setSelectedDocForAttach(null);
+      setAttachFile(null);
+      fetchDocs();
+    } catch (err: any) {
+      alert('แนบไฟล์ไม่สำเร็จ: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setIsSaving(true);
@@ -1321,6 +1358,44 @@ ${userDetail}
           </div>
         </form>
       </Modal>
+    
+      <Modal isOpen={isAttachModalOpen} onClose={() => setIsAttachModalOpen(false)} title="📎 แนบไฟล์เอกสารย้อนหลัง">
+        <form onSubmit={handleAttachFileSubmit} className="space-y-4 text-slate-700">
+          <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-200 space-y-2">
+            <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider">รายละเอียดการจองเลข</h4>
+            <p className="text-sm font-bold text-slate-800">เลขที่หนังสือส่ง: {selectedDocForAttach?.doc_number}</p>
+            <p className="text-xs text-slate-600">เรื่อง: {selectedDocForAttach?.subject}</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-600">เลือกไฟล์เอกสาร (PDF หรือรูปภาพ)</label>
+            <input 
+              type="file" 
+              accept=".pdf,image/*"
+              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+              required
+              onChange={e => setAttachFile(e.target.files?.[0] || null)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button 
+              type="button" 
+              onClick={() => setIsAttachModalOpen(false)} 
+              className="px-4 py-2 bg-slate-100 font-bold text-slate-600 rounded-xl hover:bg-slate-200"
+            >
+              ยกเลิก
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSaving}
+              className="px-5 py-2 bg-brand-primary text-white font-bold rounded-xl hover:bg-brand-primary/90 flex items-center gap-2"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+              บันทึกไฟล์แนบ
+            </button>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   );
 }
