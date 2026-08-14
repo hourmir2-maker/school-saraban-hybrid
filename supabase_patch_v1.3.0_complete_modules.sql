@@ -1,12 +1,38 @@
 -- ====================================================================
--- 🏫 SUPABASE SQL MIGRATION PATCH: COMPLETE MODULES FOR HYBRID (V1.3.0)
--- ระบบสารบรรณและบริหารสถานศึกษาแบบรวมศูนย์ (school-saraban-hybrid)
--- รองรับ Multi-Tenant (school_id) ปลอดภัย 100% รันซ้ำได้ไม่พัง (Idempotent)
+-- 🏫 SUPABASE SQL MIGRATION PATCH: COMPLETE MODULES FOR HYBRID (V1.3.1)
+-- แก้ไขปัญหา Column "date" does not exist โดยเพิ่มคำสั่ง ALTER TABLE 
+-- ครบทุกคอลัมน์ก่อนสร้าง Index และฟังก์ชัน ปลอดภัย 100% รันได้ทันที
 -- ====================================================================
 
 -- --------------------------------------------------------------------
--- 1. เพิ่มคอลัมน์ที่จำเป็นในตาราง settings (หากยังไม่มี)
+-- 1. อัปเดตตาราง settings
 -- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.settings (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
+  school_name TEXT,
+  school_address TEXT,
+  director_name TEXT,
+  current_academic_year TEXT DEFAULT '2569',
+  current_term TEXT DEFAULT '1',
+  school_doc_prefix TEXT DEFAULT 'ศธ ๐๔',
+  start_incoming_seq INT DEFAULT 1,
+  start_outgoing_seq INT DEFAULT 1,
+  start_memo_seq INT DEFAULT 1,
+  start_order_seq INT DEFAULT 1,
+  school_logo_url TEXT,
+  phone_number TEXT,
+  local_gov_name TEXT,
+  line_channel_access_token TEXT,
+  line_group_id TEXT,
+  line_bot_enabled BOOLEAN DEFAULT true,
+  telegram_group_id TEXT,
+  telegram_bot_enabled BOOLEAN DEFAULT true,
+  gemini_api_key TEXT,
+  ai_cowork_api_key TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS current_academic_year TEXT DEFAULT '2569';
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS current_term TEXT DEFAULT '1';
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS school_doc_prefix TEXT DEFAULT 'ศธ ๐๔';
@@ -20,7 +46,7 @@ ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS telegram_bot_enabled BOOLEA
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS ai_cowork_api_key TEXT;
 
 -- --------------------------------------------------------------------
--- 2. เพิ่มคอลัมน์ในตารางสารบรรณ (incoming_docs, outgoing_docs, memos, orders)
+-- 2. อัปเดตตารางสารบรรณ (incoming_docs, outgoing_docs, memos, orders)
 -- --------------------------------------------------------------------
 ALTER TABLE public.incoming_docs ADD COLUMN IF NOT EXISTS doc_date DATE DEFAULT CURRENT_DATE;
 ALTER TABLE public.incoming_docs ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT false;
@@ -71,6 +97,13 @@ CREATE TABLE IF NOT EXISTS public.students (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS academic_year TEXT DEFAULT '2569';
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS graduation_status TEXT DEFAULT 'ปกติ';
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS class_level TEXT;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS room TEXT;
+
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on students" ON public.students;
 CREATE POLICY "Allow school-specific access on students" ON public.students
@@ -80,7 +113,7 @@ CREATE POLICY "Allow school-specific access on students" ON public.students
 CREATE INDEX IF NOT EXISTS idx_students_school_year ON public.students(school_id, academic_year);
 
 -- --------------------------------------------------------------------
--- 4. ตารางบันทึกเวลาเรียน / เช็คชื่อนักเรียน (Attendance)
+-- 4. ตารางบันทึกเวลาเรียน (Attendance) - ป้องกัน Column "date" does not exist
 -- --------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.attendance (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -90,12 +123,29 @@ CREATE TABLE IF NOT EXISTS public.attendance (
   room TEXT,
   attendance_data JSONB DEFAULT '[]'::jsonb,
   summary JSONB DEFAULT '{"present": 0, "absent": 0, "leave": 0, "late": 0}'::jsonb,
-  teacher_id UUID REFERENCES auth.users(id),
+  teacher_id UUID,
   recorded_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- เพิ่มคอลัมน์ date และ summary อย่างชัดเจนในกรณีที่ตารางเดิมเคยมีอยู่แล้ว
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS class_level TEXT;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS room TEXT;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS attendance_data JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS summary JSONB DEFAULT '{"present": 0, "absent": 0, "leave": 0, "late": 0}'::jsonb;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS teacher_id UUID;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ DEFAULT NOW();
+
+-- เชื่อมโยงข้อมูล check_date เดิมเข้าสู่คอลัมน์ date (ถ้ามี)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'attendance' AND column_name = 'check_date') THEN
+    UPDATE public.attendance SET date = check_date WHERE date IS NULL;
+  END IF;
+END $$;
+
 ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on attendance" ON public.attendance;
 CREATE POLICY "Allow school-specific access on attendance" ON public.attendance
@@ -110,11 +160,16 @@ CREATE INDEX IF NOT EXISTS idx_attendance_school_date ON public.attendance(schoo
 CREATE TABLE IF NOT EXISTS public.teacher_duties (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
-  teacher_id UUID REFERENCES public.teachers(id) ON DELETE CASCADE,
+  teacher_id UUID,
   duty_day TEXT NOT NULL, -- Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
   duty_type TEXT DEFAULT 'เวรประจำวัน',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.teacher_duties ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
+ALTER TABLE public.teacher_duties ADD COLUMN IF NOT EXISTS teacher_id UUID;
+ALTER TABLE public.teacher_duties ADD COLUMN IF NOT EXISTS duty_day TEXT DEFAULT 'Monday';
+ALTER TABLE public.teacher_duties ADD COLUMN IF NOT EXISTS duty_type TEXT DEFAULT 'เวรประจำวัน';
 
 ALTER TABLE public.teacher_duties ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on teacher_duties" ON public.teacher_duties;
@@ -134,7 +189,7 @@ CREATE TABLE IF NOT EXISTS public.wfh_logs (
   profile_id UUID,
   teacher_name TEXT,
   timestamp TIMESTAMPTZ DEFAULT NOW(),
-  log_type TEXT DEFAULT 'in', -- in, out
+  log_type TEXT DEFAULT 'in',
   location TEXT,
   details TEXT,
   gps TEXT,
@@ -143,8 +198,16 @@ CREATE TABLE IF NOT EXISTS public.wfh_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
 ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS user_id UUID;
 ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS profile_id UUID;
+ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS log_type TEXT DEFAULT 'in';
+ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS location TEXT;
+ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS details TEXT;
+ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS gps TEXT;
+ALTER TABLE public.wfh_logs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+
 ALTER TABLE public.wfh_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on wfh_logs" ON public.wfh_logs;
 CREATE POLICY "Allow school-specific access on wfh_logs" ON public.wfh_logs
@@ -162,8 +225,8 @@ CREATE TABLE IF NOT EXISTS public.budget_allocations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id(),
   academic_year TEXT NOT NULL DEFAULT '2569',
-  budget_type TEXT NOT NULL, -- งบอุดหนุน, งบรายได้สถานศึกษา, งบอาหารกลางวัน
-  category_name TEXT NOT NULL, -- ชื่อแหล่งเงิน/โครงการหลัก
+  budget_type TEXT NOT NULL,
+  category_name TEXT NOT NULL,
   amount NUMERIC(15, 2) DEFAULT 0,
   spent_amount NUMERIC(15, 2) DEFAULT 0,
   remaining_amount NUMERIC(15, 2) DEFAULT 0,
@@ -172,6 +235,7 @@ CREATE TABLE IF NOT EXISTS public.budget_allocations (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.budget_allocations ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
 ALTER TABLE public.budget_allocations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on budget_allocations" ON public.budget_allocations;
 CREATE POLICY "Allow school-specific access on budget_allocations" ON public.budget_allocations
@@ -189,12 +253,12 @@ CREATE TABLE IF NOT EXISTS public.school_projects (
   current_amount NUMERIC(15, 2) DEFAULT 0,
   spent_amount NUMERIC(15, 2) DEFAULT 0,
   remaining_amount NUMERIC(15, 2) DEFAULT 0,
-  responsible_teacher_id UUID REFERENCES public.teachers(id) ON DELETE SET NULL,
   status TEXT DEFAULT 'active',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.school_projects ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
 ALTER TABLE public.school_projects ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on school_projects" ON public.school_projects;
 CREATE POLICY "Allow school-specific access on school_projects" ON public.school_projects
@@ -214,6 +278,7 @@ CREATE TABLE IF NOT EXISTS public.budget_transfers (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.budget_transfers ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
 ALTER TABLE public.budget_transfers ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on budget_transfers" ON public.budget_transfers;
 CREATE POLICY "Allow school-specific access on budget_transfers" ON public.budget_transfers
@@ -231,6 +296,7 @@ CREATE TABLE IF NOT EXISTS public.vendors (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
 ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow school-specific access on vendors" ON public.vendors;
 CREATE POLICY "Allow school-specific access on vendors" ON public.vendors
@@ -263,6 +329,7 @@ CREATE TABLE IF NOT EXISTS public.procurement_projects (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE DEFAULT get_user_school_id();
 ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS vendor_info JSONB DEFAULT '{"name": "", "address": "", "tax_id": ""}'::jsonb;
 ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS document_set_id TEXT DEFAULT 'material_egp';
 ALTER TABLE public.procurement_projects ADD COLUMN IF NOT EXISTS ai_draft_content JSONB DEFAULT '{}'::jsonb;
@@ -275,7 +342,6 @@ CREATE POLICY "Allow school-specific access on procurement_projects" ON public.p
 
 -- --------------------------------------------------------------------
 -- 8. RPC ฟังก์ชันคำนวณสถิติหน้า Dashboard (get_dashboard_stats)
--- รองรับการกรองตาม school_id ทั้งแบบส่ง parameter และจาก auth session
 -- --------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_dashboard_stats(
   target_year TEXT DEFAULT '2569',
@@ -293,7 +359,6 @@ DECLARE
   v_present_today INT := 0;
   result JSONB;
 BEGIN
-  -- กำหนด school_id ที่จะใช้ดึงข้อมูล
   v_school_id := COALESCE(target_school_id, get_user_school_id());
 
   -- 1. นับจำนวนนักเรียนปัจจุบัน
@@ -326,5 +391,4 @@ BEGIN
 END;
 $$;
 
--- ให้สิทธิ์ Authenticated users เรียกใช้ฟังก์ชันได้
 GRANT EXECUTE ON FUNCTION public.get_dashboard_stats(TEXT, DATE, UUID) TO authenticated, anon;
