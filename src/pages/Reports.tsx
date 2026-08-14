@@ -101,11 +101,11 @@ export default function Reports() {
         uniqueYears = Array.from(new Set(yearsData.map(s => s.academic_year))).filter(Boolean) as string[];     
       }
 
-      let settingsQuery = supabase.from('settings').select('current_academic_year, school_name');
+      let settingsQuery = supabase.from('settings').select('school_name');
       if (schoolId) settingsQuery = settingsQuery.eq('school_id', schoolId);
       const { data: settings } = await settingsQuery.maybeSingle();
 
-      const currentYear = settings?.current_academic_year || '2568';
+      const currentYear = '2569';
       if (settings?.school_name) {
         setSchoolName(settings.school_name);
       }

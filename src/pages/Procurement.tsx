@@ -164,9 +164,9 @@ export default function Procurement() {
     try {
       // ดึงข้อมูลพื้นฐานที่ต้องใช้ในหลายส่วนเพียงครั้งเดียว
       const [budRes, teachRes, procRes] = await Promise.all([
-        supabase.from('budget_allocations').select('*'),
+        Promise.resolve({ data: [], error: null }), // budget_allocations table not in hybrid schema
         supabase.from('teachers').select('*').order('first_name'),
-        supabase.from('procurement_projects').select('vendor_info').order('created_at', { ascending: false })
+        supabase.from('procurement_projects').select('id, project_name, vendor_name').order('created_at', { ascending: false })
       ]);
 
       if (budRes.data) setBudgets(budRes.data);
@@ -176,11 +176,11 @@ export default function Procurement() {
         const uniqueVendors: any[] = [];
         const seenNames = new Set();
         procRes.data.forEach((p: any) => {
-          if (p.vendor_info && p.vendor_info.name && p.vendor_info.name.trim() !== '') {
-            const nameNormalized = p.vendor_info.name.trim().toLowerCase();
+          if (p.vendor_name && p.vendor_name.trim() !== '') {
+            const nameNormalized = p.vendor_name.trim().toLowerCase();
             if (!seenNames.has(nameNormalized)) {
               seenNames.add(nameNormalized);
-              uniqueVendors.push(p.vendor_info);
+              uniqueVendors.push({ name: p.vendor_name, address: p.vendor_address || '', tax_id: p.vendor_tax_id || '' });
             }
           }
         });
@@ -198,7 +198,7 @@ export default function Procurement() {
       if (activeTab === 'overview') {
         const { data, error } = await supabase
           .from('procurement_projects')
-          .select(`*, vendors(vendor_name), school_projects(project_name)`)
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(10);
         if (error) throw error;
@@ -206,9 +206,10 @@ export default function Procurement() {
       } 
       
       else if (activeTab === 'projects') {
+        // school_projects ไม่มีใน Hybrid schema — ใช้ procurement_projects แทน
         const { data, error } = await supabase
-          .from('school_projects')
-          .select(`*, budget_allocations(category_name)`)
+          .from('procurement_projects')
+          .select('*')
           .order('created_at', { ascending: false });
         if (error) throw error;
         setProjects(data || []);
@@ -239,116 +240,27 @@ export default function Procurement() {
   }
 
   async function handleAIFillProjects() {
-    setIsExtracting(true);
-    try {
-      const { data: settings } = await supabase.from('settings').select('gemini_api_key, ai_cowork_api_key').single();
-      const apiKey = settings?.ai_cowork_api_key || settings?.gemini_api_key;
-      if (!apiKey) throw new Error('กรุณาตั้งค่า API Key ก่อนใช้ฟีเจอร์ AI');
-
-      const extracted = await extractProjectsFromKnowledge(apiKey, '2569');
-      if (extracted.length === 0) {
-        alert('AI ยังไม่พบรายชื่อโครงการที่ระบุวงเงินชัดเจนในคลังสมองครับ');
-        return;
-      }
-
-      if (window.confirm(`AI ค้นพบโครงการทั้งหมด ${extracted.length} รายการ ยืนยันการนำเข้าหรือไม่?`)) {
-        for (const p of extracted) {
-          // การจับคู่งบประมาณที่ฉลาดและยืดหยุ่นขึ้น
-          const matchedBudget = budgets.find(b => {
-            const bt = b.budget_type?.toLowerCase() || '';
-            const cn = b.category_name?.toLowerCase() || '';
-            const pbt = p.budget_type?.toLowerCase() || '';
-            
-            if (pbt.includes('อุดหนุน') || pbt.includes('รายหัว') || pbt.includes('เรียนฟรี')) {
-              return bt.includes('อุดหนุน');
-            }
-            if (pbt.includes('รายได้') || pbt.includes('บำรุง')) {
-              return bt.includes('รายได้') || cn.includes('รายได้');
-            }
-            
-            return pbt.includes(bt) || bt.includes(pbt) || cn.includes(pbt) || pbt.includes(cn);
-          });
-
-          await supabase.from('school_projects').insert([{
-            project_name: p.project_name,
-            academic_year: '2569',
-            budget_id: matchedBudget?.id || budgets[0]?.id,
-            planned_amount: Number(p.planned_amount) || 0,
-            current_amount: Number(p.planned_amount) || 0,
-            spent_amount: 0
-          }]);
-        }
-        alert('นำเข้าข้อมูลสำเร็จแล้วครับ');
-        fetchData();
-      }
-    } catch (err: any) { alert(err.message); }
-    finally { setIsExtracting(false); }
+    alert('ฟีเจอร์ AI สกัดแผนงานไม่พร้อมใช้งานในระบบ Hybrid ครับ');
   }
 
   async function handleAddBudgetSource() {
-    try {
-      const { error } = await supabase.from('budget_allocations').insert([{
-        ...newBudgetSource,
-        remaining_amount: newBudgetSource.amount,
-        created_by: user?.id
-      }]);
-      if (error) throw error;
-      setIsAddingBudgetSource(false);
-      setNewBudgetSource({ academic_year: '2569', budget_type: 'งบอุดหนุน', category_name: '', amount: 0 });
-      fetchData();
-    } catch (err: any) { alert(err.message); }
+    // budget_allocations ไม่มีใน Hybrid schema
+    alert('ฟีเจอร์นี้ไม่รองรับในระบบ Hybrid ครับ');
   }
 
-  async function handleDeleteBudgetSource(id: string, name: string) {
-    if (!confirm(`ยืนยันการลบแหล่งเงิน "${name}"?`)) return;
-    try {
-      const { error } = await supabase.from('budget_allocations').delete().eq('id', id);
-      if (error) throw error;
-      fetchData();
-    } catch (err: any) { alert(err.message); }
+  async function handleDeleteBudgetSource(id: string, _name: string) {
+    // budget_allocations ไม่มีใน Hybrid schema
+    console.warn('handleDeleteBudgetSource: budget_allocations table not available in Hybrid', id);
   }
 
   async function handleAddProject() {
-    if (!user) {
-      alert('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ครับ');
-      return;
-    }
-
-    if (!newProject.project_name || !newProject.budget_id) {
-      alert('กรุณากรอกข้อมูลให้ครบถ้วนครับ');
-      return;
-    }
-
-    try {
-      if (isEditingProject && selectedProjectId) {
-        await supabase.from('school_projects').update({
-          project_name: newProject.project_name,
-          budget_id: newProject.budget_id,
-          planned_amount: Number(newProject.planned_amount) || 0,
-          current_amount: Number(newProject.planned_amount) || 0 
-        }).eq('id', selectedProjectId);
-      } else {
-        await supabase.from('school_projects').insert([{
-          project_name: newProject.project_name,
-          academic_year: newProject.academic_year || '2569',
-          budget_id: newProject.budget_id,
-          planned_amount: Number(newProject.planned_amount) || 0,
-          current_amount: Number(newProject.planned_amount) || 0,
-          spent_amount: 0
-        }]);
-      }
-      setIsAddingProject(false);
-      setIsEditingProject(false);
-      fetchData();
-    } catch (err: any) { alert(err.message); }
+    // school_projects ไม่มีใน Hybrid schema — ใช้ handleAddProcurement แทน
+    alert('กรุณาใช้ปุ่ม "เพิ่มรายการจัดซื้อ" ในแท็บภาพรวมแทนครับ');
   }
 
-  async function handleDeleteProject(id: string, name: string) {
-    if (!confirm(`ยืนยันการลบโครงการ "${name}"? ข้อมูลการจัดซื้อที่เกี่ยวข้องจะถูกลบออกทั้งหมด`)) return;
-    try {
-      await supabase.from('school_projects').delete().eq('id', id);
-      fetchData();
-    } catch (err: any) { alert(err.message); }
+  async function handleDeleteProject(id: string, _name: string) {
+    // school_projects ไม่มีใน Hybrid schema
+    console.warn('handleDeleteProject: school_projects table not available in Hybrid', id);
   }
 
   async function handleDeleteProcurement(id: string, name: string) {

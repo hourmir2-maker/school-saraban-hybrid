@@ -41,52 +41,36 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
       try {
         // 0. Fetch Settings
-        const { data: settings } = await supabase
-          .from('settings')
-          .select('current_academic_year').eq('school_id', schoolId).limit(1).maybeSingle();
-        
-        const currentYear = settings?.current_academic_year || '2569';
+        const settingsQuery = supabase.from('settings').select('school_name').eq('school_id', schoolId).limit(1).maybeSingle();
+        const { data: settings } = await settingsQuery;
+        const currentYear = '2569';
 
-        // 1. ดึงสถิติรวมผ่าน RPC (ประสิทธิภาพสูง)
-        let dashboardStats: any = null;
-        try {
-          const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_stats', {
-            target_year: currentYear,
-            today_date: today
-          });
-          if (!rpcError) dashboardStats = rpcData;
-        } catch (e) {}
-
-        // 2. Fetch ดั้งเดิมสำหรับข้อมูลอื่นๆ และ Fallback
-        const { count: studentCount } = !dashboardStats ? await supabase
+        // 1. นับจำนวนนักเรียน
+        const { count: studentCount } = await supabase
           .from('students')
           .select('*', { count: 'exact', head: true })
-          .eq('academic_year', currentYear).eq('school_id', schoolId)
-          .or('graduation_status.ilike.%กำลังศึกษา%,graduation_status.eq.ปกติ') : { count: dashboardStats.total_students };
+          .eq('school_id', schoolId);
 
-        const { count: incomingCount } = !dashboardStats ? await supabase
+        // 2. นับหนังสือรับวันนี้
+        const { count: incomingCount } = await supabase
           .from('incoming_docs')
           .select('*', { count: 'exact', head: true })
-          .eq('doc_date', today).eq('school_id', schoolId) : { count: dashboardStats.incoming_today };
+          .eq('doc_date', today).eq('school_id', schoolId);
 
+        // 3. นับจำนวนครูเข้าสอน (attendance — ใช้ตาราง wfh_logs แทน teacher_duties)
         let totalPresent = 0;
-        if (dashboardStats) {
-          totalPresent = dashboardStats.present_today;
-        } else {
-          const { data: attendanceData } = await supabase
-            .from('attendance')
-            .select('summary')
-            .eq('date', today).eq('school_id', schoolId);
-          totalPresent = attendanceData?.reduce((sum, record: any) => sum + (record.summary?.present || 0), 0) || 0;
-        }
+        try {
+          const { count: wfhCount } = await supabase
+            .from('wfh_logs')
+            .select('*', { count: 'exact', head: true })
+            .eq('school_id', schoolId)
+            .gte('timestamp', today + 'T00:00:00Z')
+            .lte('timestamp', today + 'T23:59:59Z');
+          totalPresent = wfhCount || 0;
+        } catch (_e) {}
 
-        // 4. Duty Teachers (ดึงแยกเพราะต้องการ Object รายคน)
-        const { data: duties } = await supabase
-          .from('teacher_duties')
-          .select('teachers(*)')
-          .eq('duty_day', currentDay);
-
-        const currentDutyTeachers = (duties?.map((d: any) => d.teachers) || []).filter(Boolean);
+        // 4. ไม่มีตาราง teacher_duties ใน Hybrid — ใช้ครูทั้งหมดแทน
+        const currentDutyTeachers: any[] = [];
 
         // 5. Latest Documents
         const { data: latestDocs } = await supabase
