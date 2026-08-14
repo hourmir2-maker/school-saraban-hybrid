@@ -11,8 +11,38 @@ import path from 'path';
 // URL Webhook: https://your-domain.vercel.app/api/telegram-webhook?school_id=uuid
 // ============================================================
 
-/** ส่งข้อความกลับหาผู้ใช้ทาง Telegram Bot API */
+/** ส่งข้อความกลับหาผู้ใช้ทาง Telegram Bot API (แบ่งข้อความอัตโนมัติหากยาวเกิน 4000 ตัวอักษร) */
 async function sendTelegramMessage(botToken: string, chatId: number, text: string, replyMarkup?: any) {
+  if (text && text.length > 4000) {
+    const chunks: string[] = [];
+    let temp = text;
+    while (temp.length > 0) {
+      if (temp.length <= 4000) {
+        chunks.push(temp);
+        break;
+      }
+      let chunk = temp.substring(0, 4000);
+      const lastNewLine = chunk.lastIndexOf('\n');
+      if (lastNewLine > 3000) {
+        chunk = temp.substring(0, lastNewLine);
+      }
+      chunks.push(chunk);
+      temp = temp.substring(chunk.length);
+    }
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const isLast = i === chunks.length - 1;
+      const chunkText = chunks[i] + (isLast ? '' : '\n\n<b>(มีต่อ...)</b>');
+      await sendTelegramMessageSingle(botToken, chatId, chunkText, isLast ? replyMarkup : undefined);
+    }
+    return;
+  }
+
+  return sendTelegramMessageSingle(botToken, chatId, text, replyMarkup);
+}
+
+/** ฟังก์ชันสำหรับส่งข้อความเดี่ยวของ Telegram */
+async function sendTelegramMessageSingle(botToken: string, chatId: number, text: string, replyMarkup?: any) {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   const resp = await fetch(url, {
     method: 'POST',
